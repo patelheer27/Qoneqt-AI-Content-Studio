@@ -1,9 +1,8 @@
 services:
   - type: web
-    name: qoneqt-backend
-    env: python
-    buildCommand: "pip install -r requirements.txt"
-    startCommand: "uvicorn app.main:app --app-dir backend --host 0.0.0.0 --port $PORT"
+    name: qoneqt-content-studio
+    env: docker
+    plan: free
     envVars:
       - key: GEMINI_API_KEY
         sync: false
