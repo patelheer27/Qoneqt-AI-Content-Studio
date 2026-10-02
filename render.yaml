@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: qoneqt-backend
+    env: python
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "uvicorn app.main:app --app-dir backend --host 0.0.0.0 --port $PORT"
+    envVars:
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: DEMO_MODE
+        value: "false"
+      - key: VOICE_ENABLED
+        value: "true"
+      - key: IMAGE_GENERATION_ENABLED
+        value: "true"

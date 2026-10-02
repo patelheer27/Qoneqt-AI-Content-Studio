@@ -1,0 +1,42 @@
+# Secrets & Local Env
+.env
+.env.local
+*.env
+
+# Python & Virtual Environments
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+*$py.class
+*.pytest_cache/
+.coverage
+htmlcov/
+
+# Database
+qoneqt.db
+*.sqlite
+*.sqlite3
+
+# Node & Frontend
+node_modules/
+dist/
+dist-ssr/
+*.local
+
+# Media Generation Artifacts
+generated/images/*
+!generated/images/.gitkeep
+generated/audio/*
+!generated/audio/.gitkeep
+generated/videos/*
+!generated/videos/.gitkeep
+generated/captions/*
+!generated/captions/.gitkeep
+
+# IDE & OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

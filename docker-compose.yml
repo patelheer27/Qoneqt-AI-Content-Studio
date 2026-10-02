@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  qoneqt-studio:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: qoneqt_content_studio
+    ports:
+      - "8000:8000"
+    environment:
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - VOICE_ENABLED=true
+      - IMAGE_GENERATION_ENABLED=true
+      - DEMO_MODE=${DEMO_MODE:-false}
+    volumes:
+      - ./generated:/app/generated
+      - ./qoneqt.db:/app/qoneqt.db
+    restart: unless-stopped
