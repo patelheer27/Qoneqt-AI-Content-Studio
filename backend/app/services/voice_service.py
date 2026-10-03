@@ -63,9 +63,11 @@ async def synthesize_edge_tts(text: str, output_path: Path, voice: str = "en-US-
     try:
         import edge_tts
         communicate = edge_tts.Communicate(text, voice)
-        await communicate.save(str(output_path))
+        await asyncio.wait_for(communicate.save(str(output_path)), timeout=10.0)
         if output_path.exists() and output_path.stat().st_size > 100:
             return True
+    except asyncio.TimeoutError:
+        logger.warning("edge-tts synthesis timed out (likely IP block on host). Falling back to gTTS.")
     except Exception as e:
         logger.warning(f"edge-tts synthesis failed: {e}")
     return False
