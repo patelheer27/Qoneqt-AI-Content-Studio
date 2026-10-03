@@ -31,8 +31,8 @@ class MediaService:
                 on_screen_text=scene.on_screen_text,
                 visual_prompt=scene.visual_prompt,
                 output_path=output_path,
-                width=1080,
-                height=1920
+                width=720,
+                height=1280
             )
             return output_path
         except Exception as e:

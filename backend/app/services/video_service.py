@@ -36,8 +36,8 @@ class VideoService:
         ffmpeg_bin = get_ffmpeg_binary()
         output_segment_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # Video filters: ensure 1080x1920, 30fps
-        vf_filter = "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2,format=yuv420p"
+        # Video filters: ensure 720x1280, 30fps
+        vf_filter = "scale=720:1280:force_original_aspect_ratio=decrease,pad=720:1280:(ow-iw)/2:(oh-ih)/2,format=yuv420p"
 
         cmd = [
             ffmpeg_bin, "-y",
@@ -51,6 +51,7 @@ class VideoService:
             "-c:v", "libx264",
             "-preset", "ultrafast",
             "-crf", "22",
+            "-threads", "1",
             "-c:a", "aac",
             "-b:a", "128k",
             "-ar", "44100",
@@ -124,6 +125,7 @@ class VideoService:
             "-c:v", "libx264",
             "-preset", "veryfast",
             "-crf", "22",
+            "-threads", "1",
             "-c:a", "aac",
             "-b:a", "160k",
             "-pix_fmt", "yuv420p",
