@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { 
   Video, Folder, Upload, Play, Clock, MoreVertical, Plus, 
   CheckCircle2, AlertCircle, ArrowUpRight, Sparkles, Layers, 
-  ChevronRight, Download, Share2
+  ChevronRight, Download, Share2, ShieldCheck, FileCheck, Eraser
 } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import axios from 'axios';
@@ -90,7 +90,7 @@ export default function Dashboard() {
         <div>
           <div className="inline-flex items-center gap-2 px-3 py-1 bg-blue-50 border border-blue-100 rounded-full text-xs font-bold text-blue-700 uppercase tracking-wider mb-2">
             <Sparkles className="w-3.5 h-3.5 text-blue-600" />
-            AI Content Studio
+            Qoneqt AI Content Studio
           </div>
           <h2 className="text-3xl sm:text-4xl font-extrabold text-gray-900 tracking-tight">
             Turn ideas into <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 via-indigo-600 to-orange-500">viral videos.</span>
@@ -100,13 +100,48 @@ export default function Dashboard() {
           </p>
         </div>
 
-        <Link 
-          to="/create" 
-          className="inline-flex items-center justify-center gap-2.5 px-6 py-3.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold rounded-2xl shadow-lg shadow-blue-500/25 transition-all transform hover:-translate-y-0.5 shrink-0">
-          <Plus className="w-5 h-5" />
-          Create New Video
-        </Link>
+        <div className="flex items-center gap-3">
+          <Link
+            to="/security"
+            className="inline-flex items-center justify-center gap-2 px-5 py-3.5 bg-white hover:bg-gray-50 text-gray-800 font-bold rounded-2xl border border-gray-200 shadow-sm transition-all text-sm shrink-0"
+          >
+            <ShieldCheck className="w-4 h-4 text-blue-600" />
+            Security & Privacy
+          </Link>
+          <Link 
+            to="/create" 
+            className="inline-flex items-center justify-center gap-2.5 px-6 py-3.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold rounded-2xl shadow-lg shadow-blue-500/25 transition-all transform hover:-translate-y-0.5 shrink-0"
+          >
+            <Plus className="w-5 h-5" />
+            Create Video
+          </Link>
+        </div>
       </div>
+
+      {/* Security & Integrity Quick Banner */}
+      <div className="p-5 bg-gradient-to-r from-blue-900 via-indigo-900 to-slate-900 rounded-3xl text-white flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-lg shadow-blue-950/10">
+        <div className="flex items-center gap-4">
+          <div className="w-12 h-12 rounded-2xl bg-white/10 backdrop-blur-md flex items-center justify-center text-blue-300 shrink-0">
+            <ShieldCheck className="w-6 h-6" />
+          </div>
+          <div>
+            <h4 className="font-extrabold text-sm sm:text-base">Video Integrity & Metadata Sanitizer Tools</h4>
+            <p className="text-xs text-blue-200/80 mt-0.5">
+              Verify SHA-256 byte fingerprints and strip identifying container metadata before publishing.
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <Link
+            to="/security"
+            className="px-4 py-2 bg-white text-gray-900 hover:bg-blue-50 text-xs font-bold rounded-xl transition-all shadow-sm flex items-center gap-1.5"
+          >
+            <span>Launch Security Center</span>
+            <ChevronRight className="w-3.5 h-3.5" />
+          </Link>
+        </div>
+      </div>
+
       
       {/* Stats Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">

@@ -10,3 +10,4 @@ pillow
 edge-tts
 gtts
 requests
+pytest
