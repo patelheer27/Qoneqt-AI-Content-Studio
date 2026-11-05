@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, DateTime, JSON
+from sqlalchemy import Column, Integer, String, Text, DateTime, JSON, Boolean
 from datetime import datetime
 from app.database import Base
 
@@ -26,9 +26,15 @@ class Project(Base):
     voice_settings = Column(JSON, nullable=True)
     caption_settings = Column(JSON, nullable=True)
     
-    # Status
+    # Status & Video Outputs
     status = Column(String, default="Draft") # Draft, Planning, Ready, Rendering, Completed, Failed
     output_path = Column(String, nullable=True)
+    raw_output_path = Column(String, nullable=True) # Original generated video before sanitization
+    
+    # Metadata Sanitization Policy
+    metadata_policy = Column(String, default="sanitized") # "sanitized" | "preserved"
+    sanitize_metadata = Column(Boolean, default=True)     # Enabled by default
+    metadata_info = Column(JSON, nullable=True)           # Verification details, SHA-256 hash, removed tags
     
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

@@ -4,7 +4,8 @@ import axios from 'axios';
 import { 
   Wand2, Loader2, CheckCircle2, ChevronRight, Play, Film, Type, Music, 
   Edit2, Save, X, Download, Copy, Check, Share2, Hash, Sparkles, RefreshCw, 
-  MessageSquare, Lightbulb, ExternalLink, CheckCheck
+  MessageSquare, Lightbulb, ExternalLink, CheckCheck, ShieldCheck, Eraser,
+  FileCheck, FileText, ChevronDown, ChevronUp, AlertCircle, Info, ShieldAlert
 } from 'lucide-react';
 
 const API_URL = 'http://localhost:8000/api';
@@ -22,6 +23,7 @@ export default function ProjectDetails() {
 
   const [isEditingScript, setIsEditingScript] = useState(false);
   const [editedScript, setEditedScript] = useState<any>(null);
+  const [scriptSuccessMessage, setScriptSuccessMessage] = useState<string>('');
 
   // Social Post & Hashtags State
   const [isEditingSocial, setIsEditingSocial] = useState(false);
@@ -29,6 +31,11 @@ export default function ProjectDetails() {
   const [isGeneratingSocial, setIsGeneratingSocial] = useState(false);
   const [activePlatformTab, setActivePlatformTab] = useState<'recommended' | 'short' | 'instagram' | 'tiktok' | 'youtube' | 'linkedin'>('recommended');
   const [copiedItem, setCopiedItem] = useState<string | null>(null);
+
+  // Metadata Sanitization Policy State (Default: Enabled)
+  const [sanitizeMetadata, setSanitizeMetadata] = useState(true);
+  const [isUpdatingPolicy, setIsUpdatingPolicy] = useState(false);
+  const [showMetadataDetails, setShowMetadataDetails] = useState(false);
 
   const fetchProject = async () => {
     try {
@@ -43,10 +50,44 @@ export default function ProjectDetails() {
       if (res.data.social_post) {
         setEditedSocial(res.data.social_post);
       }
+      if (res.data.sanitize_metadata !== undefined) {
+        setSanitizeMetadata(res.data.sanitize_metadata);
+      }
     } catch (err: any) {
       setError(err.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleToggleMetadataPolicy = async (newValue: boolean) => {
+    setSanitizeMetadata(newValue);
+    if (project?.status === 'Completed') {
+      setIsUpdatingPolicy(true);
+      try {
+        const res = await axios.post(`${API_URL}/projects/${id}/metadata-policy`, {
+          sanitize_metadata: newValue,
+        });
+        setProject(res.data);
+      } catch (err: any) {
+        setError(err.response?.data?.detail || err.message);
+      } finally {
+        setIsUpdatingPolicy(false);
+      }
+    }
+  };
+
+  const handleRenderVideo = async () => {
+    setActionLoading(true);
+    try {
+      await axios.post(`${API_URL}/projects/${id}/render`, {
+        sanitize_metadata: sanitizeMetadata,
+      });
+      await fetchProject();
+    } catch (err: any) {
+      setError(err.response?.data?.detail || err.message);
+    } finally {
+      setActionLoading(false);
     }
   };
 
@@ -56,12 +97,35 @@ export default function ProjectDetails() {
 
   const handleGenerateScript = async () => {
     setActionLoading(true);
+    setError('');
+    setScriptSuccessMessage('');
     try {
-      const res = await axios.post(`${API_URL}/projects/${id}/generate-script`);
+      // If user currently has strategy edit fields open, auto-save first so the script uses the edited strategy
+      if (isEditingStrategy && editedStrategy) {
+        const stratRes = await axios.put(`${API_URL}/projects/${id}/strategy`, editedStrategy);
+        setProject(stratRes.data);
+        setIsEditingStrategy(false);
+      }
+
+      const res = await axios.post(`${API_URL}/projects/${id}/generate-script`, { force: true });
       setProject(res.data);
-      setEditedScript(res.data.script);
+      if (res.data.script) {
+        setEditedScript(res.data.script);
+      }
+      setScriptSuccessMessage('Script Review & Storyboard generated successfully!');
+      
+      // Smoothly scroll down to the Script Review section so the user sees it immediately
+      setTimeout(() => {
+        const el = document.getElementById('script-review');
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }, 150);
+
+      setTimeout(() => setScriptSuccessMessage(''), 5000);
     } catch (err: any) {
-      setError(err.message);
+      console.error("Error generating script:", err);
+      setError(err.response?.data?.detail || err.message || 'Failed to generate script review');
     } finally {
       setActionLoading(false);
     }
@@ -212,7 +276,7 @@ export default function ProjectDetails() {
         </div>
       </div>
 
-      {project.status === 'Planning' && project.strategy && (
+      {project.strategy && project.status !== 'Rendering' && project.status !== 'Completed' && (
         <div className="bg-white rounded-2xl border border-gray-200 p-8 shadow-sm mb-8">
           <div className="flex justify-between items-center mb-6">
             <h3 className="text-xl font-bold flex items-center gap-2 text-gray-900">
@@ -321,18 +385,40 @@ export default function ProjectDetails() {
 
           <div className="flex justify-end border-t border-gray-100 pt-6">
             <button 
+              id="generate-script-btn"
               onClick={handleGenerateScript}
-              disabled={actionLoading || isEditingStrategy}
+              disabled={actionLoading}
               className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white font-bold rounded-xl shadow-md transition-all transform hover:scale-105 disabled:opacity-50 disabled:hover:scale-100 disabled:cursor-not-allowed">
               {actionLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Wand2 className="w-5 h-5" />}
-              Generate Script & Storyboard
+              {project.script ? 'Regenerate Script & Storyboard' : 'Generate Script Review'}
             </button>
           </div>
         </div>
       )}
 
-      {project.status === 'Ready' && project.script && (
-        <div className="space-y-8">
+      {scriptSuccessMessage && (
+        <div className="mb-6 p-4 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center gap-3 text-emerald-800 font-semibold shadow-sm transition-all">
+          <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+          <span>{scriptSuccessMessage}</span>
+        </div>
+      )}
+
+      {!project.strategy && !project.script && project.status !== 'Rendering' && project.status !== 'Completed' && (
+        <div className="bg-white rounded-2xl border border-gray-200 p-8 text-center shadow-sm mb-8">
+          <h3 className="text-lg font-bold text-gray-900 mb-2">No Strategy or Script Yet</h3>
+          <p className="text-sm text-gray-500 mb-6">Click below to generate the AI director strategy and script for this project.</p>
+          <button 
+            onClick={handleGenerateScript}
+            disabled={actionLoading}
+            className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold rounded-xl shadow-md hover:from-blue-700 hover:to-indigo-700 transition-all">
+            {actionLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Wand2 className="w-5 h-5" />}
+            Generate Strategy & Script
+          </button>
+        </div>
+      )}
+
+      {project.script && project.status !== 'Rendering' && project.status !== 'Completed' && (
+        <div id="script-review" className="space-y-8 scroll-mt-6">
           <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
              <div className="bg-gray-50 px-6 py-4 border-b border-gray-200 flex justify-between items-center">
                 <h3 className="text-lg font-bold text-gray-900">Script Review</h3>
@@ -439,33 +525,64 @@ export default function ProjectDetails() {
              </div>
           </div>
           
-          <div className="flex justify-end">
-             <button 
-                onClick={async () => {
-                  setActionLoading(true);
-                  try {
-                    await axios.post(`${API_URL}/projects/${id}/render`);
-                    fetchProject(); // refresh to see status
-                  } catch (err: any) {
-                    setError(err.message);
-                  } finally {
-                    setActionLoading(false);
-                  }
-                }}
-                disabled={actionLoading || isEditingScript}
-                className="flex items-center gap-2 px-8 py-4 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-bold rounded-xl shadow-xl shadow-blue-200 transition-all transform hover:scale-105 disabled:opacity-50">
-                {actionLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Play className="w-5 h-5 fill-current" />}
-                Render Final Video
-             </button>
+          <div className="bg-white rounded-2xl border border-gray-200/90 p-5 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <label className="flex items-start gap-3 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                id="pre-render-metadata-toggle"
+                checked={sanitizeMetadata}
+                onChange={(e) => setSanitizeMetadata(e.target.checked)}
+                className="mt-0.5 w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-gray-300 cursor-pointer"
+              />
+              <div>
+                <span className="text-xs font-bold text-gray-900 flex items-center gap-1.5">
+                  <ShieldCheck className="w-3.5 h-3.5 text-blue-600" />
+                  Remove supported metadata before download
+                </span>
+                <span className="text-[11px] text-gray-500 block mt-0.5 leading-relaxed">
+                  Sanitize supported metadata from your generated video before downloading it.
+                </span>
+              </div>
+            </label>
+
+            <button 
+              onClick={handleRenderVideo}
+              disabled={actionLoading || isEditingScript}
+              className="flex items-center gap-2 px-8 py-3.5 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-bold rounded-xl shadow-xl shadow-blue-200 transition-all transform hover:scale-105 disabled:opacity-50 cursor-pointer shrink-0">
+              {actionLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Play className="w-5 h-5 fill-current" />}
+              Render Final Video
+            </button>
           </div>
         </div>
       )}
 
       {project.status === 'Rendering' && (
-        <div className="bg-white rounded-2xl border border-gray-200 p-12 shadow-sm text-center">
-          <Loader2 className="w-16 h-16 animate-spin text-blue-600 mx-auto mb-6" />
-          <h3 className="text-2xl font-bold text-gray-900 mb-2">Rendering your video...</h3>
-          <p className="text-gray-500 max-w-md mx-auto">The AI Director is generating visuals, synthesizing voiceovers, adding captions, and compiling the final video. This may take a few minutes.</p>
+        <div className="bg-white rounded-2xl border border-gray-200 p-12 shadow-sm text-center space-y-4">
+          <Loader2 className="w-16 h-16 animate-spin text-blue-600 mx-auto" />
+          <div>
+            <h3 className="text-2xl font-bold text-gray-900 mb-1">Rendering your video...</h3>
+            <p className="text-gray-500 max-w-md mx-auto text-sm">
+              The AI Director is generating visuals, synthesizing voiceovers, adding captions, and compiling scenes.
+            </p>
+          </div>
+          <div className="max-w-md mx-auto pt-3 border-t border-gray-100 text-xs text-gray-500 space-y-1">
+            <span className="font-semibold text-gray-700 block mb-1">Processing Pipeline Stages:</span>
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              <span className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded-md font-medium">1. Scene Rendering</span>
+              <span>→</span>
+              <span className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded-md font-medium">2. FFmpeg Concatenation</span>
+              <span>→</span>
+              {sanitizeMetadata ? (
+                <>
+                  <span className="px-2 py-0.5 bg-emerald-50 text-emerald-700 rounded-md font-medium">3. Metadata Sanitization</span>
+                  <span>→</span>
+                  <span className="px-2 py-0.5 bg-emerald-50 text-emerald-700 rounded-md font-medium">4. Output Verification & SHA-256</span>
+                </>
+              ) : (
+                <span className="px-2 py-0.5 bg-gray-100 text-gray-700 rounded-md font-medium">3. SHA-256 Calculation</span>
+              )}
+            </div>
+          </div>
         </div>
       )}
 
@@ -488,13 +605,20 @@ export default function ProjectDetails() {
               </div>
             </div>
 
-            <div className="flex items-center gap-3 w-full md:w-auto">
+            <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
+              <button
+                onClick={handleRenderVideo}
+                disabled={actionLoading}
+                className="flex-1 md:flex-initial flex items-center justify-center gap-2.5 px-6 py-3.5 bg-white/20 hover:bg-white/30 text-white font-bold rounded-2xl border border-white/40 shadow-md backdrop-blur-sm transition-all disabled:opacity-50 cursor-pointer">
+                {actionLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <RefreshCw className="w-5 h-5" />}
+                Re-render Video
+              </button>
               <a 
                 href={`${API_URL}/projects/${project.id}/download`} 
                 download
-                className="flex-1 md:flex-initial flex items-center justify-center gap-3 px-7 py-3.5 bg-white text-emerald-800 hover:bg-emerald-50 font-bold rounded-2xl shadow-lg hover:shadow-xl transition-all transform hover:-translate-y-0.5">
+                className="flex-1 md:flex-initial flex items-center justify-center gap-3 px-7 py-3.5 bg-white text-emerald-800 hover:bg-emerald-50 font-bold rounded-2xl shadow-lg hover:shadow-xl transition-all transform hover:-translate-y-0.5 cursor-pointer">
                 <Download className="w-5 h-5 text-emerald-600" />
-                Download Video (.MP4)
+                {project.metadata_policy === 'sanitized' ? 'Download Sanitized Video (.MP4)' : 'Download Video (.MP4)'}
               </a>
             </div>
           </div>
@@ -551,13 +675,190 @@ export default function ProjectDetails() {
                   </div>
                 </div>
 
-                <div className="mt-5">
-                  <a 
-                    href={`${API_URL}/projects/${project.id}/download`} 
-                    download
-                    className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl shadow-md shadow-emerald-600/20 transition-all text-sm">
-                    <Download className="w-4 h-4" /> Download MP4 File
-                  </a>
+                {/* Export & Metadata Security Section */}
+                <div className="mt-5 pt-5 border-t border-gray-100 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h5 className="font-bold text-gray-900 flex items-center gap-1.5 text-xs uppercase tracking-wider">
+                      <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                      Metadata & Export Policy
+                    </h5>
+                    <span className={`text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full ${
+                      project.metadata_policy === 'sanitized'
+                        ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                        : 'bg-gray-100 text-gray-700 border border-gray-200'
+                    }`}>
+                      {project.metadata_policy === 'sanitized' ? 'Sanitization Active' : 'Original Preserved'}
+                    </span>
+                  </div>
+
+                  {/* Required Preference Control */}
+                  <div className="p-3.5 bg-gray-50/80 rounded-2xl border border-gray-200/80">
+                    <label className="flex items-start gap-3 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        id="completed-metadata-toggle"
+                        checked={sanitizeMetadata}
+                        onChange={(e) => handleToggleMetadataPolicy(e.target.checked)}
+                        disabled={isUpdatingPolicy}
+                        className="mt-0.5 w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-gray-300 cursor-pointer shrink-0"
+                      />
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-bold text-gray-900">
+                            Remove supported metadata before download
+                          </span>
+                          {isUpdatingPolicy && <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-600" />}
+                        </div>
+                        <p className="text-[11px] text-gray-500 mt-0.5 leading-relaxed">
+                          Sanitize supported metadata from your generated video before downloading it.
+                        </p>
+                      </div>
+                    </label>
+                  </div>
+
+                  {/* Structured Status Table */}
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div className="p-2.5 bg-gray-50/70 rounded-xl border border-gray-100">
+                      <span className="text-[10px] text-gray-400 font-semibold block uppercase">Metadata policy</span>
+                      <span className={`font-bold text-[11px] ${project.metadata_policy === 'sanitized' ? 'text-emerald-700' : 'text-gray-800'}`}>
+                        {project.metadata_policy === 'sanitized' ? 'Sanitization enabled' : 'Original metadata preserved'}
+                      </span>
+                    </div>
+                    <div className="p-2.5 bg-gray-50/70 rounded-xl border border-gray-100">
+                      <span className="text-[10px] text-gray-400 font-semibold block uppercase">Processing status</span>
+                      <span className="font-bold text-[11px] text-gray-800 flex items-center gap-1">
+                        <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                        {project.metadata_policy === 'sanitized' ? 'Verified' : 'Video ready'}
+                      </span>
+                    </div>
+                    <div className="p-2.5 bg-gray-50/70 rounded-xl border border-gray-100 col-span-2">
+                      <span className="text-[10px] text-gray-400 font-semibold block uppercase">Output</span>
+                      <span className="font-bold text-[11px] text-gray-900">
+                        {project.metadata_policy === 'sanitized' ? 'Sanitized video ready' : 'Original-metadata video ready'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Truthful Status Message */}
+                  <div className={`p-3 rounded-xl text-[11px] flex items-start gap-2 ${
+                    project.metadata_policy === 'sanitized'
+                      ? 'bg-emerald-50/70 border border-emerald-100 text-emerald-900'
+                      : 'bg-amber-50/70 border border-amber-100 text-amber-900'
+                  }`}>
+                    <Info className="w-4 h-4 shrink-0 mt-0.5 text-blue-600" />
+                    <div className="leading-relaxed">
+                      {project.metadata_info?.status_text || (
+                        project.metadata_policy === 'sanitized'
+                          ? 'Video ready. Supported metadata sanitization was completed and the output was verified.'
+                          : 'Video ready. Metadata sanitization was disabled for this export. Metadata may remain.'
+                      )}
+                    </div>
+                  </div>
+
+                  {/* SHA-256 Fingerprint Box */}
+                  <div className="bg-slate-900 text-white rounded-2xl p-3.5 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
+                        <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                        SHA-256
+                      </span>
+                      <span className="text-[10px] text-slate-400 truncate max-w-[170px]" title="Identifies the exact downloaded file">
+                        Exact download file hash
+                      </span>
+                    </div>
+                    <div className="font-mono text-[10px] sm:text-[11px] font-bold text-emerald-300 break-all bg-black/40 p-2.5 rounded-xl border border-white/10 select-all">
+                      {project.metadata_info?.sha256 || 'Calculating SHA-256...'}
+                    </div>
+                    <div className="flex items-center gap-2 pt-0.5">
+                      <button
+                        onClick={() => copyToClipboard(project.metadata_info?.sha256 || '', 'sha256')}
+                        disabled={!project.metadata_info?.sha256}
+                        className="flex-1 flex items-center justify-center gap-1.5 py-1.5 px-3 bg-white/15 hover:bg-white/25 text-white font-bold rounded-lg text-xs transition-colors cursor-pointer disabled:opacity-50">
+                        {copiedItem === 'sha256' ? (
+                          <>
+                            <Check className="w-3.5 h-3.5 text-emerald-400" />
+                            <span className="text-emerald-300 font-extrabold">Copied!</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-3.5 h-3.5" />
+                            <span>Copy SHA-256</span>
+                          </>
+                        )}
+                      </button>
+                      <a
+                        href={`${API_URL}/projects/${project.id}/checksum`}
+                        download
+                        className="flex items-center justify-center gap-1 py-1.5 px-3 bg-white/15 hover:bg-white/25 text-white font-bold rounded-lg text-xs transition-colors cursor-pointer"
+                        title="Download .sha256 checksum verification file">
+                        <Download className="w-3.5 h-3.5" />
+                        <span>.sha256</span>
+                      </a>
+                    </div>
+                  </div>
+
+                  {/* Expandable Comparison Details */}
+                  {project.metadata_info?.comparison && (
+                    <div className="border border-gray-200/80 rounded-2xl overflow-hidden">
+                      <button
+                        onClick={() => setShowMetadataDetails(!showMetadataDetails)}
+                        className="w-full flex items-center justify-between p-3 bg-gray-50/70 hover:bg-gray-100/70 text-xs font-bold text-gray-700 transition-colors text-left cursor-pointer">
+                        <span className="flex items-center gap-1.5">
+                          <Eraser className="w-3.5 h-3.5 text-blue-600" />
+                          <span>Metadata Verification Report</span>
+                          <span className="text-[10px] font-normal text-gray-500">
+                            ({project.metadata_info.comparison.removed_fields?.length || 0} removed)
+                          </span>
+                        </span>
+                        {showMetadataDetails ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
+                      </button>
+                      {showMetadataDetails && (
+                        <div className="p-3 bg-white space-y-2.5 text-xs border-t border-gray-100">
+                          {project.metadata_info.comparison.details?.length > 0 ? (
+                            <div className="divide-y divide-gray-100">
+                              {project.metadata_info.comparison.details.map((item: any, idx: number) => (
+                                <div key={idx} className="py-1.5 flex items-center justify-between gap-2 text-[11px]">
+                                  <span className="font-semibold text-gray-800">{item.field}</span>
+                                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                    item.status === 'Removed' ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-700'
+                                  }`}>
+                                    {item.status}: {item.sanitized}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="text-gray-500 text-[11px]">
+                              No removable metadata tags were present in the source file.
+                            </p>
+                          )}
+                          {project.metadata_info.comparison.retained_fields?.length > 0 && (
+                            <div className="pt-2 border-t border-gray-100">
+                              <span className="font-bold text-gray-700 text-[10px] block mb-1">Preserved Streams:</span>
+                              <div className="flex flex-wrap gap-1">
+                                {project.metadata_info.comparison.retained_fields.map((f: string, i: number) => (
+                                  <span key={i} className="px-2 py-0.5 bg-gray-100 text-gray-700 rounded text-[10px]">
+                                    ✓ {f}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Primary Download Button */}
+                  <div>
+                    <a 
+                      href={`${API_URL}/projects/${project.id}/download`} 
+                      download
+                      className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl shadow-md shadow-emerald-600/20 transition-all text-sm cursor-pointer">
+                      <Download className="w-4 h-4" />
+                      {project.metadata_policy === 'sanitized' ? 'Download Sanitized MP4 File' : 'Download Original MP4 File'}
+                    </a>
+                  </div>
                 </div>
               </div>
 
@@ -885,6 +1186,59 @@ export default function ProjectDetails() {
               )}
             </div>
           </div>
+
+          {/* Storyboard & Script Scenes (Review & Re-render) */}
+          {project.scenes && project.scenes.length > 0 && (
+            <div className="bg-white rounded-3xl border border-gray-200/80 p-6 sm:p-8 shadow-sm">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 pb-4 border-b border-gray-100">
+                <div>
+                  <h4 className="text-lg font-extrabold text-gray-900 flex items-center gap-2">
+                    <Film className="w-5 h-5 text-blue-600" />
+                    Storyboard & Voiceover Narration Scenes
+                  </h4>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    Complete narration sentences and audio-synchronized durations
+                  </p>
+                </div>
+                <button
+                  onClick={handleRenderVideo}
+                  disabled={actionLoading}
+                  className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs shadow-md shadow-blue-500/20 transition-all disabled:opacity-50 cursor-pointer">
+                  {actionLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                  <span>Re-render Full Video</span>
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                {project.scenes.map((scene: any, idx: number) => (
+                  <div key={idx} className="flex flex-col md:flex-row gap-4 p-4.5 bg-gray-50/70 border border-gray-100 rounded-2xl items-start">
+                    <div className="flex items-center gap-2.5 shrink-0">
+                      <span className="w-8 h-8 rounded-xl bg-blue-600 text-white flex items-center justify-center font-bold text-xs shadow-xs">
+                        {idx + 1}
+                      </span>
+                      <span className="text-xs font-semibold px-2.5 py-1 bg-white border border-gray-200 text-gray-700 rounded-lg">
+                        ⏱️ {scene.duration ? `${scene.duration}s` : 'Auto'}
+                      </span>
+                    </div>
+                    <div className="flex-1 space-y-2">
+                      <div className="text-sm font-semibold text-gray-900 leading-relaxed bg-white p-3 rounded-xl border border-gray-100">
+                        <span className="text-xs font-bold text-blue-600 block mb-1">🗣️ Voiceover Narration:</span>
+                        "{scene.narration}"
+                      </div>
+                      <div className="flex flex-wrap gap-4 text-xs text-gray-500">
+                        {scene.visual_description && (
+                          <span className="flex items-center gap-1.5"><Film className="w-3.5 h-3.5 text-gray-400" /> {scene.visual_description}</span>
+                        )}
+                        {scene.on_screen_text && (
+                          <span className="flex items-center gap-1.5 font-medium text-gray-700"><Type className="w-3.5 h-3.5 text-gray-400" /> Title: {scene.on_screen_text}</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

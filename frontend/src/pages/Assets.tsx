@@ -1,33 +1,1384 @@
-import React from 'react';
-import { Image, Upload, Search, Film, Music, Mic } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { 
+  Upload, Trash2, ArrowUp, ArrowDown, Play, Download, Sparkles, 
+  RefreshCw, Film, Volume2, Music, Type, Sliders, CheckCircle2, 
+  AlertCircle, X, Eye, Video, Wand2, Compass, Move, ChevronRight, 
+  Check, Plus, RotateCcw, ExternalLink 
+} from 'lucide-react';
+import { imageToVideoApi } from '../services/api';
+
+interface SceneItem {
+  id: string;
+  image_url: string;
+  image_path?: string;
+  filename: string;
+  width?: number;
+  height?: number;
+  size_kb?: number;
+  text: string;
+  duration: number;
+  motion_type: 'camera' | 'ai';
+  camera_motion: string;
+  ai_motion: string;
+  ai_intensity: 'low' | 'medium' | 'high';
+  transition: string;
+  transition_duration: number;
+}
+
+interface VoiceOption {
+  id: string;
+  name: string;
+  gender: string;
+  lang: string;
+}
+
+interface MusicOption {
+  id: string;
+  name: string;
+  category: string;
+  duration: number;
+  url: string;
+}
+
+interface GenerationJob {
+  job_id: number;
+  project_id: number;
+  status: string;
+  progress: number;
+  current_step: string;
+  video_url?: string;
+  error?: string;
+}
+
+const CAMERA_MOTIONS = [
+  { id: 'zoom_in', label: 'Zoom In', desc: 'Smooth slow forward camera push' },
+  { id: 'zoom_out', label: 'Zoom Out', desc: 'Gradual backward reveal' },
+  { id: 'pan_left', label: 'Pan Left', desc: 'Horizontal sweep from right to left' },
+  { id: 'pan_right', label: 'Pan Right', desc: 'Horizontal sweep from left to right' },
+  { id: 'pan_up', label: 'Pan Up', desc: 'Vertical crane camera rise' },
+  { id: 'pan_down', label: 'Pan Down', desc: 'Vertical tilt downwards' },
+  { id: 'ken_burns', label: 'Ken Burns', desc: 'Classic documentary zoom & pan' },
+  { id: 'cinematic', label: 'Cinematic Dynamic', desc: 'Sophisticated slow orbital motion' },
+  { id: 'parallax', label: '2.5D Parallax', desc: 'Simulated multi-depth focal push' },
+];
+
+const AI_MOTIONS = [
+  { id: 'natural_flow', label: 'Natural Flow', desc: 'Organic ambient motion for nature & landscapes' },
+  { id: 'wind_breeze', label: 'Wind & Breeze', desc: 'Subtle swaying of foliage, trees & fabrics' },
+  { id: 'ambient_living', label: 'Ambient Living', desc: 'Living atmosphere with subtle pulse & drift' },
+  { id: 'cinematic_dynamic', label: 'Cinematic Dynamic', desc: 'Dramatic depth expansion and micro-shifts' },
+  { id: 'ocean_waves', label: 'Water & Waves', desc: 'Fluid ripple and shoreline water movement' },
+];
+
+const TRANSITIONS = [
+  { id: 'fade', label: 'Fade to Black' },
+  { id: 'crossfade', label: 'Smooth Crossfade' },
+  { id: 'slideleft', label: 'Slide Left' },
+  { id: 'slideright', label: 'Slide Right' },
+  { id: 'slideup', label: 'Slide Up' },
+  { id: 'slidedown', label: 'Slide Down' },
+  { id: 'zoom', label: 'Zoom Transition' },
+  { id: 'dissolve', label: 'Dissolve' },
+  { id: 'blur', label: 'Blur Transition' },
+];
+
+export const resolveMediaUrl = (url?: string | null): string => {
+  if (!url) return '';
+  if (url.startsWith('http://') || url.startsWith('https://')) return url;
+  const clean = url.startsWith('/') ? url : `/${url}`;
+  return `http://localhost:8000${clean}`;
+};
 
 export default function Assets() {
+  // Main Scenes state
+  const [scenes, setScenes] = useState<SceneItem[]>([]);
+  const [activeSceneIndex, setActiveSceneIndex] = useState<number>(0);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+
+  // Settings
+  const [aspectRatio, setAspectRatio] = useState<'16:9' | '9:16' | '1:1'>('16:9');
+  const [resolution, setResolution] = useState<'720p' | '1080p'>('1080p');
+  
+  // Audio state
+  const [voiceList, setVoiceList] = useState<VoiceOption[]>([]);
+  const [musicList, setMusicList] = useState<MusicOption[]>([]);
+  const [voiceEnabled, setVoiceEnabled] = useState(true);
+  const [selectedVoice, setSelectedVoice] = useState('en-US-GuyNeural');
+  const [customAudioUrl, setCustomAudioUrl] = useState<string | null>(null);
+  const [customAudioPath, setCustomAudioPath] = useState<string | null>(null);
+  const [narrationVolume, setNarrationVolume] = useState(1.0);
+
+  // Music state
+  const [musicEnabled, setMusicEnabled] = useState(true);
+  const [selectedMusic, setSelectedMusic] = useState('ambient');
+  const [customMusicUrl, setCustomMusicUrl] = useState<string | null>(null);
+  const [musicVolume, setMusicVolume] = useState(0.2);
+
+  // Subtitle state
+  const [subtitleEnabled, setSubtitleEnabled] = useState(true);
+  const [subtitleFont, setSubtitleFont] = useState('Inter');
+  const [subtitleFontSize, setSubtitleFontSize] = useState<'small' | 'medium' | 'large'>('medium');
+  const [subtitleColor, setSubtitleColor] = useState('#FFFFFF');
+  const [subtitleBg, setSubtitleBg] = useState<'translucent' | 'solid' | 'none'>('translucent');
+  const [subtitlePosition, setSubtitlePosition] = useState<'bottom' | 'center' | 'top'>('bottom');
+
+  // Script Bulk input modal/tab
+  const [bulkScript, setBulkScript] = useState('');
+  const [showBulkScriptModal, setShowBulkScriptModal] = useState(false);
+
+  // Scene Preview Modal
+  const [previewingScene, setPreviewingScene] = useState<SceneItem | null>(null);
+  const [scenePreviewUrl, setScenePreviewUrl] = useState<string | null>(null);
+  const [isPreviewLoading, setIsPreviewLoading] = useState(false);
+
+  // Generation & Status
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [currentJob, setCurrentJob] = useState<GenerationJob | null>(null);
+  const [recentProjects, setRecentProjects] = useState<any[]>([]);
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const audioInputRef = useRef<HTMLInputElement>(null);
+
+  // Load voices, music, and recent projects on mount
+  useEffect(() => {
+    loadMetadata();
+    loadRecentProjects();
+  }, []);
+
+  const loadMetadata = async () => {
+    try {
+      const [voices, music] = await Promise.all([
+        imageToVideoApi.getVoices(),
+        imageToVideoApi.getMusicTracks(),
+      ]);
+      setVoiceList(voices || []);
+      setMusicList(music || []);
+      if (voices && voices.length > 0) setSelectedVoice(voices[0].id);
+      if (music && music.length > 0) setSelectedMusic(music[0].id);
+    } catch (err) {
+      console.warn('Failed to fetch voice/music lists:', err);
+    }
+  };
+
+  const loadRecentProjects = async () => {
+    try {
+      const projects = await imageToVideoApi.getRecentProjects();
+      setRecentProjects(projects || []);
+
+      // If user hasn't generated a video in this immediate session, automatically display the most recent completed video!
+      if (projects && projects.length > 0) {
+        const latest = projects[0];
+        if (latest.video_url && (latest.status || '').toLowerCase() === 'completed') {
+          setCurrentJob(prev => {
+            if (!prev) {
+              return {
+                job_id: latest.id,
+                project_id: latest.id,
+                status: 'completed',
+                progress: 100,
+                current_step: 'Completed',
+                video_url: latest.video_url,
+              };
+            }
+            return prev;
+          });
+        }
+      }
+    } catch (err) {
+      console.warn('Failed to load recent projects:', err);
+    }
+  };
+
+  // Drag and drop handlers
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      handleFilesUpload(Array.from(e.dataTransfer.files));
+    }
+  };
+
+  const handleFilesUpload = async (files: File[]) => {
+    setUploadError(null);
+    const validExtensions = ['jpg', 'jpeg', 'png', 'webp'];
+    const validFiles = files.filter(f => {
+      const ext = f.name.split('.').pop()?.toLowerCase() || '';
+      return validExtensions.includes(ext);
+    });
+
+    if (validFiles.length === 0) {
+      setUploadError('Please select valid image files (JPG, PNG, or WEBP).');
+      return;
+    }
+
+    setIsUploading(true);
+    try {
+      const res = await imageToVideoApi.uploadImages(validFiles);
+      const uploadedList = res?.images || res?.uploaded || [];
+      if (uploadedList && uploadedList.length > 0) {
+        const newScenes: SceneItem[] = uploadedList.map((img: any, idx: number) => ({
+          id: `scene_${Date.now()}_${idx}_${Math.random().toString(36).substring(2, 6)}`,
+          image_url: img.url,
+          image_path: img.file_path,
+          filename: img.filename,
+          width: img.width,
+          height: img.height,
+          size_kb: img.file_size ? Math.round(img.file_size / 1024) : img.size_kb,
+          text: `Scene ${scenes.length + idx + 1}: Captivating visual moment.`,
+          duration: 4.0,
+          motion_type: 'camera',
+          camera_motion: CAMERA_MOTIONS[idx % CAMERA_MOTIONS.length].id,
+          ai_motion: AI_MOTIONS[idx % AI_MOTIONS.length].id,
+          ai_intensity: 'medium',
+          transition: 'crossfade',
+          transition_duration: 1.0,
+        }));
+
+        setScenes(prev => [...prev, ...newScenes]);
+      }
+    } catch (err: any) {
+      setUploadError(err.response?.data?.detail || 'Failed to upload images. Check file sizes and formats.');
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const handleCustomAudioUpload = async (file: File) => {
+    try {
+      const res = await imageToVideoApi.uploadAudio(file);
+      const audioData = res?.audio || res;
+      if (audioData && audioData.url) {
+        setCustomAudioUrl(audioData.url);
+        setCustomAudioPath(audioData.file_path);
+      }
+    } catch (err) {
+      alert('Failed to upload custom audio file.');
+    }
+  };
+
+  // Reordering & Scene actions
+  const moveScene = (index: number, direction: 'up' | 'down') => {
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= scenes.length) return;
+    const updated = [...scenes];
+    const temp = updated[index];
+    updated[index] = updated[targetIndex];
+    updated[targetIndex] = temp;
+    setScenes(updated);
+    setActiveSceneIndex(targetIndex);
+  };
+
+  const removeScene = (index: number) => {
+    setScenes(prev => prev.filter((_, i) => i !== index));
+    if (activeSceneIndex >= scenes.length - 1) {
+      setActiveSceneIndex(Math.max(0, scenes.length - 2));
+    }
+  };
+
+  const updateScene = (index: number, patch: Partial<SceneItem>) => {
+    setScenes(prev => {
+      const next = [...prev];
+      next[index] = { ...next[index], ...patch };
+      return next;
+    });
+  };
+
+  // Distribute bulk script into scenes
+  const applyBulkScript = () => {
+    const lines = bulkScript
+      .split('\n')
+      .map(l => l.trim())
+      .filter(l => l.length > 0);
+
+    if (lines.length === 0) return;
+
+    setScenes(prev =>
+      prev.map((sc, i) => {
+        if (i < lines.length) {
+          return { ...sc, text: lines[i] };
+        }
+        return sc;
+      })
+    );
+    setShowBulkScriptModal(false);
+  };
+
+  // Preview individual scene
+  const handlePreviewScene = async (scene: SceneItem) => {
+    setPreviewingScene(scene);
+    setScenePreviewUrl(null);
+    setIsPreviewLoading(true);
+
+    try {
+      const res = await imageToVideoApi.previewScene({
+        image_url: scene.image_url,
+        motion_type: scene.motion_type,
+        camera_motion: scene.camera_motion,
+        ai_motion: scene.ai_motion,
+        ai_intensity: scene.ai_intensity,
+        duration: scene.duration,
+        aspect_ratio: aspectRatio,
+        text: scene.text,
+      });
+
+      const pUrl = res?.preview_url || res?.preview_video_url;
+      if (pUrl) {
+        setScenePreviewUrl(pUrl);
+      }
+    } catch (err: any) {
+      alert(err.response?.data?.detail || 'Scene preview rendering failed.');
+      setPreviewingScene(null);
+    } finally {
+      setIsPreviewLoading(false);
+    }
+  };
+
+  // Full Video Generation
+  const handleGenerateVideo = async () => {
+    if (scenes.length === 0) {
+      alert('Please upload at least one image before generating a video.');
+      return;
+    }
+
+    setIsGenerating(true);
+    setCurrentJob({
+      job_id: 0,
+      project_id: 0,
+      status: 'Rendering',
+      progress: 5,
+      current_step: 'Submitting video generation job...',
+    });
+
+    try {
+      const payload = {
+        title: `Image-to-Video - ${new Date().toLocaleDateString()}`,
+        aspect_ratio: aspectRatio,
+        resolution: resolution,
+        scenes: scenes.map(s => ({
+          image_url: s.image_url,
+          image_path: s.image_path,
+          text: s.text,
+          duration: s.duration,
+          motion_type: s.motion_type,
+          camera_motion: s.camera_motion,
+          ai_motion: s.ai_motion,
+          ai_intensity: s.ai_intensity,
+          transition: s.transition,
+          transition_duration: s.transition_duration,
+        })),
+        settings: {
+          aspect_ratio: aspectRatio,
+          resolution: resolution,
+          voice_enabled: voiceEnabled,
+          voice_id: selectedVoice,
+          custom_audio_url: customAudioUrl,
+          custom_audio_path: customAudioPath,
+          narration_volume: narrationVolume,
+          music_enabled: musicEnabled,
+          music_id: selectedMusic,
+          custom_music_url: customMusicUrl,
+          music_volume: musicVolume,
+          subtitle_enabled: subtitleEnabled,
+          subtitle_font: subtitleFont,
+          subtitle_size: subtitleFontSize,
+          subtitle_color: subtitleColor,
+          subtitle_bg: subtitleBg,
+          subtitle_position: subtitlePosition,
+        },
+      };
+
+      const res = await imageToVideoApi.generateVideo(payload);
+      if (res && res.job_id) {
+        setCurrentJob({
+          job_id: res.job_id,
+          project_id: res.job_id,
+          status: 'Rendering',
+          progress: 10,
+          current_step: 'Starting rendering engine...',
+        });
+
+        // Start polling status
+        pollJobStatus(res.job_id);
+      }
+    } catch (err: any) {
+      setIsGenerating(false);
+      setCurrentJob(null);
+      alert(err.response?.data?.detail || 'Video generation failed to initialize.');
+    }
+  };
+
+  const pollJobStatus = async (jobId: number) => {
+    const interval = setInterval(async () => {
+      try {
+        const status = await imageToVideoApi.getJobStatus(jobId);
+        setCurrentJob(status);
+
+        const normStatus = (status?.status || '').toLowerCase();
+        if (normStatus === 'completed') {
+          clearInterval(interval);
+          setIsGenerating(false);
+          loadRecentProjects();
+        } else if (normStatus === 'failed') {
+          clearInterval(interval);
+          setIsGenerating(false);
+        }
+      } catch (err) {
+        clearInterval(interval);
+        setIsGenerating(false);
+      }
+    }, 1500);
+  };
+
+  const totalDuration = scenes.reduce((sum, s) => sum + s.duration, 0);
+
+  // Status checks normalized to lowercase
+  const isJobCompleted = (currentJob?.status || '').toLowerCase() === 'completed';
+  const isJobFailed = (currentJob?.status || '').toLowerCase() === 'failed';
+  const isJobRendering = isGenerating || (Boolean(currentJob) && !isJobCompleted && !isJobFailed);
+  const currentVideoUrl = resolveMediaUrl(currentJob?.video_url);
+
   return (
-    <div className="p-8 max-w-7xl mx-auto h-full flex flex-col">
-      <div className="flex justify-between items-center mb-8">
+    <div className="p-8 max-w-7xl mx-auto h-full flex flex-col space-y-6">
+      {/* Header */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-gray-100">
         <div>
-          <h2 className="text-3xl font-extrabold text-gray-900 mb-2">Assets Library</h2>
-          <p className="text-gray-500">Manage your images, videos, audio, and generated media.</p>
+          <div className="flex items-center gap-3">
+            <h2 className="text-3xl font-black text-gray-900 tracking-tight">Image-to-Video</h2>
+            <span className="px-2.5 py-0.5 text-xs font-bold bg-blue-50 text-blue-700 border border-blue-200 rounded-full">
+              Automated Motion Pipeline
+            </span>
+          </div>
+          <p className="text-sm font-medium text-gray-500 mt-1">
+            Transform photos into cinematic videos with AI living motion, narration, synchronized subtitles, and transitions.
+          </p>
         </div>
-        <button className="flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl shadow-md transition-all">
-          <Upload className="w-5 h-5" />
-          Upload Asset
-        </button>
+
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => {
+              if (confirm('Clear all scenes and reset?')) {
+                setScenes([]);
+              }
+            }}
+            disabled={scenes.length === 0 || isJobRendering}
+            className="flex items-center gap-2 px-4 py-2.5 border border-gray-200 hover:bg-gray-100 text-gray-700 font-semibold rounded-xl text-sm transition-all disabled:opacity-50 cursor-pointer"
+          >
+            <RotateCcw className="w-4 h-4" />
+            Reset
+          </button>
+
+          <button
+            onClick={handleGenerateVideo}
+            disabled={scenes.length === 0 || isJobRendering}
+            className="flex items-center gap-2 px-6 py-2.5 bg-gradient-to-r from-blue-600 via-blue-700 to-orange-500 hover:from-blue-700 hover:to-orange-600 text-white font-bold rounded-xl shadow-lg shadow-blue-500/20 text-sm transition-all disabled:opacity-50 cursor-pointer"
+          >
+            {isJobRendering ? (
+              <>
+                <RefreshCw className="w-4 h-4 animate-spin" />
+                Rendering Video...
+              </>
+            ) : (
+              <>
+                <Sparkles className="w-4 h-4 text-orange-200" />
+                Generate Video ({scenes.length} {scenes.length === 1 ? 'Scene' : 'Scenes'})
+              </>
+            )}
+          </button>
+        </div>
       </div>
 
-      <div className="flex gap-4 border-b border-gray-200 mb-6">
-        <button className="px-4 py-2 border-b-2 border-blue-600 text-blue-600 font-medium">All Assets</button>
-        <button className="px-4 py-2 border-b-2 border-transparent text-gray-500 hover:text-gray-700 font-medium flex items-center gap-2"><Image className="w-4 h-4"/> Images</button>
-        <button className="px-4 py-2 border-b-2 border-transparent text-gray-500 hover:text-gray-700 font-medium flex items-center gap-2"><Film className="w-4 h-4"/> Videos</button>
-        <button className="px-4 py-2 border-b-2 border-transparent text-gray-500 hover:text-gray-700 font-medium flex items-center gap-2"><Music className="w-4 h-4"/> Audio</button>
-        <button className="px-4 py-2 border-b-2 border-transparent text-gray-500 hover:text-gray-700 font-medium flex items-center gap-2"><Mic className="w-4 h-4"/> Voiceovers</button>
+      {/* Video Settings Bar */}
+      <div className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm flex flex-wrap items-center justify-between gap-4">
+        <div className="flex items-center gap-6">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Aspect Ratio:</span>
+            <div className="flex bg-gray-100 p-1 rounded-lg">
+              {(['16:9', '9:16', '1:1'] as const).map(ratio => (
+                <button
+                  key={ratio}
+                  onClick={() => setAspectRatio(ratio)}
+                  className={`px-3 py-1 rounded-md text-xs font-bold transition-all cursor-pointer ${
+                    aspectRatio === ratio
+                      ? 'bg-white text-blue-700 shadow-sm'
+                      : 'text-gray-500 hover:text-gray-900'
+                  }`}
+                >
+                  {ratio === '16:9' ? '16:9 Landscape' : ratio === '9:16' ? '9:16 Portrait' : '1:1 Square'}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Resolution:</span>
+            <div className="flex bg-gray-100 p-1 rounded-lg">
+              {(['1080p', '720p'] as const).map(res => (
+                <button
+                  key={res}
+                  onClick={() => setResolution(res)}
+                  className={`px-3 py-1 rounded-md text-xs font-bold transition-all cursor-pointer ${
+                    resolution === res
+                      ? 'bg-white text-blue-700 shadow-sm'
+                      : 'text-gray-500 hover:text-gray-900'
+                  }`}
+                >
+                  {res}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-4 text-xs font-semibold text-gray-500">
+          <span className="flex items-center gap-1.5 bg-blue-50 text-blue-700 px-3 py-1 rounded-full border border-blue-100">
+            <Film className="w-3.5 h-3.5" /> {scenes.length} Scenes
+          </span>
+          <span className="flex items-center gap-1.5 bg-orange-50 text-orange-700 px-3 py-1 rounded-full border border-orange-100">
+            Duration: ~{Math.round(totalDuration)}s
+          </span>
+        </div>
       </div>
 
-      <div className="flex-1 flex flex-col items-center justify-center text-center text-gray-500 mt-4 bg-gray-50 rounded-2xl border border-dashed border-gray-300 p-12">
-        <Upload className="w-16 h-16 text-gray-300 mb-4" />
-        <h3 className="text-xl font-bold text-gray-900 mb-2">Your library is empty</h3>
-        <p className="mb-6 max-w-md">Upload your own media or let the AI Director generate visuals and audio for you.</p>
+      {/* Generation Progress Banner */}
+      {isJobRendering && currentJob && (
+        <div className="bg-blue-50 border border-blue-200 rounded-2xl p-5 shadow-sm">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2 font-bold text-blue-900 text-sm">
+              <RefreshCw className="w-4 h-4 animate-spin text-blue-600" />
+              <span>{currentJob.current_step || 'Processing video generation...'}</span>
+            </div>
+            <span className="text-xs font-black text-blue-700">{currentJob.progress}%</span>
+          </div>
+          <div className="w-full bg-blue-200 h-2.5 rounded-full overflow-hidden">
+            <div 
+              className="bg-gradient-to-r from-blue-600 to-orange-500 h-full rounded-full transition-all duration-300"
+              style={{ width: `${Math.max(5, currentJob.progress)}%` }}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Error Alert */}
+      {isJobFailed && currentJob && (
+        <div className="bg-red-50 border border-red-200 rounded-2xl p-5 shadow-sm text-xs font-semibold text-red-700 flex items-center gap-2">
+          <AlertCircle className="w-5 h-5 shrink-0 text-red-600" />
+          <span>Generation failed: {currentJob.error || 'FFmpeg process encountered an unexpected issue.'}</span>
+        </div>
+      )}
+
+      {/* Generated Video Ready & Player Card */}
+      {isJobCompleted && currentVideoUrl && (
+        <div className="bg-gradient-to-br from-emerald-50 via-teal-50 to-blue-50 border-2 border-emerald-300 rounded-3xl p-6 shadow-xl flex flex-col md:flex-row items-center gap-6">
+          <div className="w-full md:w-96 rounded-2xl overflow-hidden shadow-2xl border-2 border-emerald-200 bg-black aspect-video flex items-center justify-center relative">
+            <video 
+              key={currentVideoUrl}
+              src={currentVideoUrl} 
+              controls 
+              playsInline
+              autoPlay
+              className="w-full h-full object-contain"
+            />
+          </div>
+          <div className="flex-1 space-y-3">
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-100 text-emerald-800 rounded-full text-xs font-extrabold">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+              Video Generated Successfully
+            </div>
+            <h3 className="text-2xl font-black text-gray-900">Your Video is Ready!</h3>
+            <p className="text-xs text-gray-600 leading-relaxed">
+              Synthesized voiceover, camera & AI motion effects, synchronized subtitles, and audio mixing have been combined into a high-definition MP4.
+            </p>
+            <div className="flex flex-wrap items-center gap-3 pt-2">
+              <a
+                href={currentJob?.job_id ? `http://localhost:8000/api/image-to-video/download/${currentJob.job_id}` : currentVideoUrl}
+                download={`image_to_video_${currentJob?.job_id || Date.now()}.mp4`}
+                className="flex items-center gap-2 px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl shadow-lg shadow-emerald-500/20 text-sm transition-all cursor-pointer"
+              >
+                <Download className="w-4 h-4" />
+                Download Video (MP4)
+              </a>
+              <a
+                href={currentVideoUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1.5 px-4 py-3 bg-white border border-gray-200 text-gray-700 font-semibold rounded-xl text-sm hover:bg-gray-50 shadow-sm transition-all cursor-pointer"
+              >
+                <ExternalLink className="w-4 h-4" />
+                Open Fullscreen
+              </a>
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(currentVideoUrl);
+                  alert('Video URL copied to clipboard!');
+                }}
+                className="px-4 py-3 bg-white border border-gray-200 text-gray-700 font-semibold rounded-xl text-sm hover:bg-gray-50 shadow-sm transition-all cursor-pointer"
+              >
+                Copy Link
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Main Workspace 2-Column Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Left Column: Image Upload & Scenes Timeline (2 cols) */}
+        <div className="lg:col-span-2 space-y-6">
+          {/* Upload Zone */}
+          <div
+            onDragOver={e => e.preventDefault()}
+            onDrop={handleDrop}
+            className="border-2 border-dashed border-blue-200 hover:border-blue-400 bg-blue-50/30 rounded-2xl p-6 transition-all text-center flex flex-col items-center justify-center gap-3"
+          >
+            <div className="w-12 h-12 rounded-2xl bg-blue-100 text-blue-600 flex items-center justify-center">
+              <Upload className="w-6 h-6" />
+            </div>
+            <div>
+              <h4 className="text-base font-bold text-gray-900">
+                Drag & drop your images here, or{' '}
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="text-blue-600 hover:underline cursor-pointer"
+                >
+                  browse files
+                </button>
+              </h4>
+              <p className="text-xs text-gray-500 mt-1">
+                Supports JPG, JPEG, PNG, WEBP. Upload multiple images to create a multi-scene video.
+              </p>
+            </div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              accept="image/jpeg,image/png,image/webp"
+              className="hidden"
+              onChange={e => {
+                if (e.target.files && e.target.files.length > 0) {
+                  handleFilesUpload(Array.from(e.target.files));
+                }
+              }}
+            />
+            {isUploading && (
+              <div className="flex items-center gap-2 text-xs font-bold text-blue-600">
+                <RefreshCw className="w-4 h-4 animate-spin" /> Uploading & inspecting image dimensions...
+              </div>
+            )}
+            {uploadError && (
+              <div className="text-xs font-semibold text-red-600 flex items-center gap-1">
+                <AlertCircle className="w-4 h-4" /> {uploadError}
+              </div>
+            )}
+          </div>
+
+          {/* Timeline & Scene Editor */}
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Film className="w-5 h-5 text-blue-600" />
+                <h3 className="text-lg font-black text-gray-900 tracking-tight">Scenes & Script Timeline</h3>
+                <span className="text-xs font-bold bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">
+                  {scenes.length}
+                </span>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setShowBulkScriptModal(true)}
+                  disabled={scenes.length === 0}
+                  className="text-xs font-bold text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
+                >
+                  Distribute Script to Scenes
+                </button>
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="flex items-center gap-1 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 px-3 py-1.5 rounded-lg shadow-sm transition-colors cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Add Images
+                </button>
+              </div>
+            </div>
+
+            {scenes.length === 0 ? (
+              <div className="bg-white rounded-2xl border border-gray-100 p-12 text-center text-gray-400">
+                <Film className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+                <h4 className="text-base font-bold text-gray-700">No scenes created yet</h4>
+                <p className="text-xs text-gray-500 mt-1 max-w-sm mx-auto">
+                  Upload one or more images above. Each image becomes an animated scene with its own voice narration, dynamic motion, and transitions.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {scenes.map((scene, idx) => (
+                  <div
+                    key={scene.id}
+                    className={`bg-white rounded-2xl border transition-all p-5 shadow-sm ${
+                      activeSceneIndex === idx
+                        ? 'border-blue-500 ring-2 ring-blue-100'
+                        : 'border-gray-100 hover:border-gray-200'
+                    }`}
+                    onClick={() => setActiveSceneIndex(idx)}
+                  >
+                    <div className="flex flex-col md:flex-row gap-5">
+                      {/* Thumbnail & File Details */}
+                      <div className="w-full md:w-44 shrink-0 flex flex-col gap-2">
+                        <div className="relative aspect-video rounded-xl overflow-hidden bg-gray-900 border border-gray-200 group">
+                          <img
+                            src={resolveMediaUrl(scene.image_url)}
+                            alt={scene.filename}
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                          />
+                          <div className="absolute top-2 left-2 bg-black/70 backdrop-blur-md text-white text-[10px] font-black px-2 py-0.5 rounded-md">
+                            Scene {idx + 1}
+                          </div>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handlePreviewScene(scene);
+                            }}
+                            className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity text-white text-xs font-bold gap-1 cursor-pointer"
+                          >
+                            <Play className="w-4 h-4 fill-white" /> Preview Scene
+                          </button>
+                        </div>
+
+                        <div className="text-[11px] text-gray-400 flex justify-between font-semibold px-1">
+                          <span>{scene.width && scene.height ? `${scene.width}x${scene.height}` : 'Image'}</span>
+                          <span>{scene.size_kb ? `${scene.size_kb} KB` : ''}</span>
+                        </div>
+
+                        {/* Reorder & Delete controls */}
+                        <div className="flex items-center justify-between pt-1 border-t border-gray-100">
+                          <div className="flex items-center gap-1">
+                            <button
+                              disabled={idx === 0}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                moveScene(idx, 'up');
+                              }}
+                              title="Move scene up"
+                              className="p-1 rounded-md text-gray-400 hover:text-blue-600 hover:bg-blue-50 disabled:opacity-20 cursor-pointer"
+                            >
+                              <ArrowUp className="w-4 h-4" />
+                            </button>
+                            <button
+                              disabled={idx === scenes.length - 1}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                moveScene(idx, 'down');
+                              }}
+                              title="Move scene down"
+                              className="p-1 rounded-md text-gray-400 hover:text-blue-600 hover:bg-blue-50 disabled:opacity-20 cursor-pointer"
+                            >
+                              <ArrowDown className="w-4 h-4" />
+                            </button>
+                          </div>
+
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              removeScene(idx);
+                            }}
+                            title="Delete scene"
+                            className="p-1 rounded-md text-gray-400 hover:text-red-600 hover:bg-red-50 cursor-pointer"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Scene Configurations: Text, Motion & Transition */}
+                      <div className="flex-1 space-y-4">
+                        {/* Narration Script Text */}
+                        <div>
+                          <label className="block text-xs font-bold text-gray-700 mb-1">
+                            Scene Script & Subtitle Text
+                          </label>
+                          <textarea
+                            value={scene.text}
+                            onChange={(e) => updateScene(idx, { text: e.target.value })}
+                            rows={2}
+                            placeholder="Enter the voiceover script and subtitle for this scene..."
+                            className="w-full text-xs font-medium p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none resize-none"
+                          />
+                        </div>
+
+                        {/* Controls Grid */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          {/* Motion Mode Selector */}
+                          <div className="bg-gray-50/70 p-3 rounded-xl border border-gray-100">
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="text-[11px] font-bold text-gray-700 flex items-center gap-1">
+                                {scene.motion_type === 'camera' ? (
+                                  <Compass className="w-3.5 h-3.5 text-blue-600" />
+                                ) : (
+                                  <Wand2 className="w-3.5 h-3.5 text-orange-500" />
+                                )}
+                                Motion Effect
+                              </span>
+                              <div className="flex bg-gray-200/80 p-0.5 rounded-lg text-[10px] font-bold">
+                                <button
+                                  type="button"
+                                  onClick={() => updateScene(idx, { motion_type: 'camera' })}
+                                  className={`px-2 py-0.5 rounded-md transition-all cursor-pointer ${
+                                    scene.motion_type === 'camera' ? 'bg-white text-blue-700 shadow-xs' : 'text-gray-600'
+                                  }`}
+                                >
+                                  Camera
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => updateScene(idx, { motion_type: 'ai' })}
+                                  className={`px-2 py-0.5 rounded-md transition-all cursor-pointer ${
+                                    scene.motion_type === 'ai' ? 'bg-white text-orange-600 shadow-xs' : 'text-gray-600'
+                                  }`}
+                                >
+                                  AI Motion
+                                </button>
+                              </div>
+                            </div>
+
+                            {scene.motion_type === 'camera' ? (
+                              <select
+                                value={scene.camera_motion}
+                                onChange={(e) => updateScene(idx, { camera_motion: e.target.value })}
+                                className="w-full text-xs font-semibold bg-white border border-gray-200 rounded-lg p-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                              >
+                                {CAMERA_MOTIONS.map(m => (
+                                  <option key={m.id} value={m.id}>
+                                    {m.label} ({m.desc})
+                                  </option>
+                                ))}
+                              </select>
+                            ) : (
+                              <div className="space-y-2">
+                                <select
+                                  value={scene.ai_motion}
+                                  onChange={(e) => updateScene(idx, { ai_motion: e.target.value })}
+                                  className="w-full text-xs font-semibold bg-white border border-gray-200 rounded-lg p-1.5 focus:outline-none focus:ring-1 focus:ring-orange-500"
+                                >
+                                  {AI_MOTIONS.map(m => (
+                                    <option key={m.id} value={m.id}>
+                                      {m.label} ({m.desc})
+                                    </option>
+                                  ))}
+                                </select>
+                                <div className="flex items-center justify-between text-[10px] font-bold text-gray-500">
+                                  <span>Intensity:</span>
+                                  <div className="flex gap-1">
+                                    {(['low', 'medium', 'high'] as const).map(lvl => (
+                                      <button
+                                        key={lvl}
+                                        type="button"
+                                        onClick={() => updateScene(idx, { ai_intensity: lvl })}
+                                        className={`px-2 py-0.5 rounded uppercase text-[9px] cursor-pointer ${
+                                          scene.ai_intensity === lvl
+                                            ? 'bg-orange-500 text-white font-extrabold'
+                                            : 'bg-gray-200 text-gray-600'
+                                        }`}
+                                      >
+                                        {lvl}
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Transition to next scene */}
+                          <div className="bg-gray-50/70 p-3 rounded-xl border border-gray-100">
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="text-[11px] font-bold text-gray-700 flex items-center gap-1">
+                                <Move className="w-3.5 h-3.5 text-blue-600" />
+                                Next Scene Transition
+                              </span>
+                              <span className="text-[10px] text-gray-400 font-semibold">
+                                {idx === scenes.length - 1 ? 'Outro Fade' : `Scene ${idx + 1} ➔ ${idx + 2}`}
+                              </span>
+                            </div>
+
+                            <select
+                              value={scene.transition}
+                              onChange={(e) => updateScene(idx, { transition: e.target.value })}
+                              className="w-full text-xs font-semibold bg-white border border-gray-200 rounded-lg p-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            >
+                              {TRANSITIONS.map(t => (
+                                <option key={t.id} value={t.id}>
+                                  {t.label}
+                                </option>
+                              ))}
+                            </select>
+
+                            <div className="flex items-center justify-between mt-2 text-[10px] font-bold text-gray-500">
+                              <span>Scene Duration:</span>
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="range"
+                                  min="2"
+                                  max="12"
+                                  step="0.5"
+                                  value={scene.duration}
+                                  onChange={(e) => updateScene(idx, { duration: parseFloat(e.target.value) })}
+                                  className="w-20 accent-blue-600 cursor-pointer"
+                                />
+                                <span className="w-8 text-right font-black text-gray-700">{scene.duration}s</span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Right Column: Audio, Subtitles & Customization (1 col) */}
+        <div className="space-y-6">
+          {/* Card: Voiceover Narration */}
+          <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
+                  <Volume2 className="w-4 h-4" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-bold text-gray-900">Voice Narration</h4>
+                  <p className="text-[11px] text-gray-400">TTS or uploaded audio</p>
+                </div>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={voiceEnabled}
+                  onChange={(e) => setVoiceEnabled(e.target.checked)}
+                  className="sr-only peer"
+                />
+                <div className="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
+              </label>
+            </div>
+
+            {voiceEnabled && (
+              <div className="space-y-3 pt-2 border-t border-gray-100">
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1">
+                    Select Voice Actor
+                  </label>
+                  <select
+                    value={selectedVoice}
+                    onChange={(e) => setSelectedVoice(e.target.value)}
+                    className="w-full text-xs font-semibold bg-gray-50 border border-gray-200 rounded-xl p-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    {voiceList.map(v => (
+                      <option key={v.id} value={v.id}>
+                        {v.name} ({v.gender} • {v.lang})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between text-xs font-bold text-gray-700 mb-1">
+                    <span>Voice Volume</span>
+                    <span className="text-blue-600">{Math.round(narrationVolume * 100)}%</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0"
+                    max="1.5"
+                    step="0.05"
+                    value={narrationVolume}
+                    onChange={(e) => setNarrationVolume(parseFloat(e.target.value))}
+                    className="w-full accent-blue-600 cursor-pointer"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1">
+                    Or Upload Custom Voice Audio
+                  </label>
+                  <input
+                    ref={audioInputRef}
+                    type="file"
+                    accept="audio/mp3,audio/wav,audio/m4a"
+                    className="text-xs text-gray-500 file:mr-2 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"
+                    onChange={(e) => {
+                      if (e.target.files && e.target.files[0]) {
+                        handleCustomAudioUpload(e.target.files[0]);
+                      }
+                    }}
+                  />
+                  {customAudioUrl && (
+                    <div className="mt-2 text-[11px] font-bold text-emerald-600 flex items-center gap-1">
+                      <CheckCircle2 className="w-3.5 h-3.5" /> Custom audio uploaded & linked
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Card: Background Music */}
+          <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-orange-50 text-orange-600 flex items-center justify-center">
+                  <Music className="w-4 h-4" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-bold text-gray-900">Background Music</h4>
+                  <p className="text-[11px] text-gray-400">Atmospheric soundtrack</p>
+                </div>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={musicEnabled}
+                  onChange={(e) => setMusicEnabled(e.target.checked)}
+                  className="sr-only peer"
+                />
+                <div className="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-orange-500"></div>
+              </label>
+            </div>
+
+            {musicEnabled && (
+              <div className="space-y-3 pt-2 border-t border-gray-100">
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1">
+                    Select Track
+                  </label>
+                  <select
+                    value={selectedMusic}
+                    onChange={(e) => setSelectedMusic(e.target.value)}
+                    className="w-full text-xs font-semibold bg-gray-50 border border-gray-200 rounded-xl p-2.5 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  >
+                    {musicList.map(m => (
+                      <option key={m.id} value={m.id}>
+                        {m.name} ({m.category})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between text-xs font-bold text-gray-700 mb-1">
+                    <span>Music Volume</span>
+                    <span className="text-orange-600">{Math.round(musicVolume * 100)}%</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0"
+                    max="1.0"
+                    step="0.05"
+                    value={musicVolume}
+                    onChange={(e) => setMusicVolume(parseFloat(e.target.value))}
+                    className="w-full accent-orange-500 cursor-pointer"
+                  />
+                  <p className="text-[10px] text-gray-400 mt-1">
+                    * Automatically ducked during voice narration to preserve vocal clarity.
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Card: Subtitle & Typography Customization */}
+          <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center">
+                  <Type className="w-4 h-4" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-bold text-gray-900">Subtitles & Captions</h4>
+                  <p className="text-[11px] text-gray-400">SRT synchronization & styling</p>
+                </div>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={subtitleEnabled}
+                  onChange={(e) => setSubtitleEnabled(e.target.checked)}
+                  className="sr-only peer"
+                />
+                <div className="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-purple-600"></div>
+              </label>
+            </div>
+
+            {subtitleEnabled && (
+              <div className="space-y-3 pt-2 border-t border-gray-100">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-1">Font Family</label>
+                    <select
+                      value={subtitleFont}
+                      onChange={(e) => setSubtitleFont(e.target.value)}
+                      className="w-full text-xs font-semibold bg-gray-50 border border-gray-200 rounded-lg p-2 focus:outline-none"
+                    >
+                      <option value="Inter">Inter Clean</option>
+                      <option value="Sans">Standard Sans</option>
+                      <option value="Serif">Cinematic Serif</option>
+                      <option value="Monospace">Modern Monospace</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-1">Font Size</label>
+                    <select
+                      value={subtitleFontSize}
+                      onChange={(e) => setSubtitleFontSize(e.target.value as any)}
+                      className="w-full text-xs font-semibold bg-gray-50 border border-gray-200 rounded-lg p-2 focus:outline-none"
+                    >
+                      <option value="small">Small (28pt)</option>
+                      <option value="medium">Medium (38pt)</option>
+                      <option value="large">Large (50pt)</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-1">Text Color</label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="color"
+                        value={subtitleColor}
+                        onChange={(e) => setSubtitleColor(e.target.value)}
+                        className="w-8 h-8 rounded border border-gray-200 cursor-pointer"
+                      />
+                      <span className="text-xs font-mono text-gray-600">{subtitleColor}</span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-1">Position</label>
+                    <select
+                      value={subtitlePosition}
+                      onChange={(e) => setSubtitlePosition(e.target.value as any)}
+                      className="w-full text-xs font-semibold bg-gray-50 border border-gray-200 rounded-lg p-2 focus:outline-none"
+                    >
+                      <option value="bottom">Bottom Overlay</option>
+                      <option value="center">Center Focus</option>
+                      <option value="top">Top Header</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1">Background Capsule</label>
+                  <div className="flex bg-gray-100 p-1 rounded-lg">
+                    {(['translucent', 'solid', 'none'] as const).map(bg => (
+                      <button
+                        key={bg}
+                        type="button"
+                        onClick={() => setSubtitleBg(bg)}
+                        className={`flex-1 py-1 rounded text-xs font-bold capitalize transition-all cursor-pointer ${
+                          subtitleBg === bg ? 'bg-white text-purple-700 shadow-sm' : 'text-gray-500'
+                        }`}
+                      >
+                        {bg}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Subtitle Live Preview Pill */}
+                <div className="mt-2 p-3 bg-gray-900 rounded-xl text-center">
+                  <span
+                    style={{
+                      color: subtitleColor,
+                      fontSize: subtitleFontSize === 'small' ? '12px' : subtitleFontSize === 'large' ? '16px' : '14px',
+                    }}
+                    className={`inline-block px-3 py-1 rounded-md font-bold ${
+                      subtitleBg === 'translucent'
+                        ? 'bg-black/60 backdrop-blur-sm'
+                        : subtitleBg === 'solid'
+                        ? 'bg-black'
+                        : ''
+                    }`}
+                  >
+                    Sample Synchronized Subtitle Preview
+                  </span>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Card: Recent Projects */}
+          {recentProjects.length > 0 && (
+            <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm space-y-3">
+              <h4 className="text-sm font-bold text-gray-900">Recent Videos</h4>
+              <div className="space-y-2">
+                {recentProjects.slice(0, 5).map(proj => {
+                  const projUrl = resolveMediaUrl(proj.video_url);
+                  const isSelected = currentJob?.video_url === proj.video_url;
+
+                  return (
+                    <div
+                      key={proj.id}
+                      onClick={() => {
+                        if (proj.video_url) {
+                          setCurrentJob({
+                            job_id: proj.id,
+                            project_id: proj.id,
+                            status: 'completed',
+                            progress: 100,
+                            current_step: 'Completed',
+                            video_url: proj.video_url,
+                          });
+                          window.scrollTo({ top: 0, behavior: 'smooth' });
+                        }
+                      }}
+                      className={`p-3 rounded-xl border transition-all cursor-pointer flex items-center justify-between ${
+                        isSelected 
+                          ? 'border-emerald-500 bg-emerald-50/60 shadow-xs' 
+                          : 'border-gray-100 hover:bg-gray-50'
+                      }`}
+                    >
+                      <div className="overflow-hidden pr-2 flex items-center gap-2.5">
+                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+                          isSelected ? 'bg-emerald-600 text-white' : 'bg-emerald-50 text-emerald-700'
+                        }`}>
+                          <Play className={`w-3.5 h-3.5 ${isSelected ? 'fill-white' : 'fill-emerald-700'}`} />
+                        </div>
+                        <div>
+                          <div className="text-xs font-bold text-gray-800 truncate">{proj.title}</div>
+                          <div className="text-[10px] text-gray-400">
+                            {proj.duration ? `${Math.round(proj.duration)}s` : ''} • {proj.scenes_count} scenes • Click to play
+                          </div>
+                        </div>
+                      </div>
+                      {proj.video_url && (
+                        <a
+                          href={`http://localhost:8000/api/image-to-video/download/${proj.id}`}
+                          download
+                          onClick={e => e.stopPropagation()}
+                          className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
+                          title="Download MP4"
+                        >
+                          <Download className="w-4 h-4" />
+                        </a>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
+
+      {/* Bulk Script Distribution Modal */}
+      {showBulkScriptModal && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-black text-gray-900">Distribute Script to Scenes</h3>
+              <button
+                onClick={() => setShowBulkScriptModal(false)}
+                className="p-1 text-gray-400 hover:text-gray-600 rounded-lg cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <p className="text-xs text-gray-500">
+              Paste your complete script below. Each line or paragraph will automatically be assigned in order to your uploaded scenes.
+            </p>
+            <textarea
+              value={bulkScript}
+              onChange={(e) => setBulkScript(e.target.value)}
+              rows={6}
+              placeholder="Paste complete script here with each scene narration on a new line..."
+              className="w-full text-xs font-medium p-3 bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
+            />
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setShowBulkScriptModal(false)}
+                className="px-4 py-2 border border-gray-200 text-gray-700 rounded-xl text-xs font-bold hover:bg-gray-50 cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={applyBulkScript}
+                className="px-4 py-2 bg-blue-600 text-white rounded-xl text-xs font-bold hover:bg-blue-700 cursor-pointer"
+              >
+                Apply to Scenes
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Scene Preview Modal */}
+      {previewingScene && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-xl w-full p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-base font-black text-gray-900">Scene Motion Preview</h3>
+                <p className="text-xs text-gray-500">
+                  {previewingScene.motion_type === 'camera' 
+                    ? `Camera Motion: ${previewingScene.camera_motion}` 
+                    : `AI Motion: ${previewingScene.ai_motion} (${previewingScene.ai_intensity})`}
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setPreviewingScene(null);
+                  setScenePreviewUrl(null);
+                }}
+                className="p-1 text-gray-400 hover:text-gray-600 rounded-lg cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="w-full bg-black rounded-xl overflow-hidden aspect-video flex items-center justify-center">
+              {isPreviewLoading ? (
+                <div className="flex flex-col items-center gap-2 text-white text-xs font-bold">
+                  <RefreshCw className="w-6 h-6 animate-spin text-blue-400" />
+                  <span>Rendering animated motion preview...</span>
+                </div>
+              ) : scenePreviewUrl ? (
+                <video
+                  key={scenePreviewUrl}
+                  src={resolveMediaUrl(scenePreviewUrl)}
+                  controls
+                  autoPlay
+                  loop
+                  className="w-full h-full object-contain"
+                />
+              ) : (
+                <img
+                  src={resolveMediaUrl(previewingScene.image_url)}
+                  alt="Scene"
+                  className="w-full h-full object-cover"
+                />
+              )}
+            </div>
+
+            <p className="text-xs text-gray-600 font-medium italic text-center">
+              "{previewingScene.text}"
+            </p>
+
+            <div className="flex justify-end">
+              <button
+                onClick={() => {
+                  setPreviewingScene(null);
+                  setScenePreviewUrl(null);
+                }}
+                className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-xl text-xs font-bold cursor-pointer"
+              >
+                Close Preview
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,5 +1,6 @@
 import os
 import io
+import time
 import uuid
 import re
 import urllib.parse
@@ -13,6 +14,7 @@ class ImageService:
         self.output_dir = os.path.join(base_dir, "storage", "assets", "images")
         os.makedirs(self.output_dir, exist_ok=True)
         self.pollinations_api_key = getattr(settings, "POLLINATIONS_API_KEY", "") or os.getenv("POLLINATIONS_API_KEY", "")
+        self.pollinations_cooldown = 0
 
     def _get_dimensions(self, aspect_ratio: str):
         if aspect_ratio == "9:16":
@@ -24,20 +26,207 @@ class ImageService:
         else: # 16:9
             return 1920, 1080
 
-    def _extract_keywords(self, description: str) -> str:
-        """Extracts the most relevant search keywords from the scene visual description."""
-        stopwords = {
+    def _extract_topic_anchor(self, topic: str) -> str:
+        """Extracts the primary concrete subject keyword or short noun phrase representing the topic."""
+        if not topic:
+            return ""
+        clean = re.sub(r'^(how\s+to\s+(?:make|build|cook|change|play|fix|do|learn|master|create|use)?|guide\s+to\s+|tips\s+for\s+|ways\s+to\s+|secrets?\s+of\s+|\d+\s*)', '', topic.strip(), flags=re.IGNORECASE).strip()
+        words = [w for w in re.findall(r'[a-zA-Z]+', clean.lower()) if len(w) > 2 and w not in ["the", "and", "for", "with", "about", "how", "why", "what", "making", "breakdown", "complete", "deep", "truth"]]
+        if not words:
+            all_words = [w for w in re.findall(r'[a-zA-Z]+', topic.lower()) if len(w) > 2]
+            return all_words[0] if all_words else ""
+        
+        joined = " ".join(words)
+        if "pizza" in joined:
+            return "pizza"
+        if "burger" in joined or "patty" in joined:
+            return "burger"
+        if "coffee" in joined or "espresso" in joined:
+            return "espresso" if "espresso" in joined else "coffee"
+        if "sourdough" in joined or "bread" in joined:
+            return "sourdough bread"
+        if "pasta" in joined or "noodle" in joined:
+            return "pasta"
+        if "tire" in joined or "car" in joined or "automotive" in joined or "wheel" in joined:
+            return "car tire"
+        if "guitar" in joined:
+            return "acoustic guitar"
+        if "dog" in joined or "puppy" in joined or "pet" in joined:
+            return "dog"
+        if "cyber" in joined or "security" in joined:
+            return "cybersecurity"
+        if "habit" in joined or "morning" in joined or "routine" in joined:
+            return "morning routine"
+        if "back" in joined and "pain" in joined:
+            return "back pain"
+        if "coding" in joined or "python" in joined or "program" in joined:
+            return "coding"
+        if "space" in joined or "galaxy" in joined or "astronomy" in joined:
+            return "space"
+        if "garden" in joined or "plant" in joined:
+            return "gardening"
+        if "meditat" in joined:
+            return "meditation"
+        if "yoga" in joined:
+            return "yoga"
+        if "finance" in joined or "money" in joined or "stock" in joined or "invest" in joined:
+            return "finance"
+            
+        return words[0]
+
+    def _derive_search_queries(self, title: str = "", narration: str = "", description: str = "", topic: str = "") -> list[str]:
+        """Extracts prioritized, strictly topic-anchored photography search queries matching the scene subject."""
+        queries = []
+        topic_anchor = self._extract_topic_anchor(topic)
+        combined_text = f"{title} {narration} {description}".lower()
+
+        filler = {
             "a", "an", "the", "and", "or", "in", "on", "at", "to", "for", "with",
             "from", "by", "is", "are", "was", "were", "showing", "looking", "pointing",
-            "studying", "modern", "friendly", "of", "where", "that", "this"
+            "studying", "modern", "friendly", "of", "where", "that", "this", "cinematic",
+            "photorealistic", "detailed", "clean", "minimalist", "shot", "ultra",
+            "hyperrealistic", "close", "macro", "establishing", "lighting", "soft",
+            "ambient", "resolution", "res", "focus", "atmosphere", "ambience", "view",
+            "wide", "angle", "high", "end", "beautiful", "dramatic", "habit", "step",
+            "scene", "tip", "rule", "taking", "demonstrating", "overlooking", "feeling",
+            "accomplishment", "environment", "person", "motivated", "aspirational",
+            "professional", "setup", "great", "best", "simple", "easy", "part",
+            "secret", "core", "foundation", "understanding", "mastering", "breakdown"
         }
-        words = re.findall(r'[a-zA-Z]+', description.lower())
-        meaningful = [w for w in words if w not in stopwords and len(w) > 2]
-        return " ".join(meaningful[:3]) if meaningful else "cinematic landscape"
 
-    def _try_pollinations_ai(self, description: str, width: int, height: int, seed: int = 1) -> Image.Image:
+        # Domain/topic specific visual concept mapping
+        if topic_anchor == "pizza" or "pizza" in combined_text or "pizza" in topic.lower():
+            title_lower = title.lower()
+            if any(w in title_lower for w in ["dough", "ferment", "flour", "knead", "yeast", "ingredient", "base"]):
+                queries.extend(["pizza dough", "kneading pizza dough", "pizza dough ball"])
+            elif any(w in title_lower for w in ["sauce", "simplicity", "tomato", "cheese", "mozzarella", "topping", "layer", "flavor"]):
+                queries.extend(["pizza sauce", "pizza mozzarella", "pizza tomato sauce"])
+            elif any(w in title_lower for w in ["heat", "oven", "blister", "fire", "bake", "temperature"]):
+                queries.extend(["pizza wood oven", "pizza oven", "wood fired pizza oven"])
+            elif any(w in title_lower for w in ["drizzle", "oil", "finish", "olive", "basil", "seasoning"]):
+                queries.extend(["pizza basil", "margherita pizza basil", "pizza olive oil"])
+            elif any(w in title_lower for w in ["slice", "perfect", "eat", "serve", "pull", "piece"]):
+                queries.extend(["pizza slice", "pizza cheese pull", "margherita pizza slice"])
+            elif any(w in combined_text for w in ["dough", "knead", "flour"]):
+                queries.extend(["pizza dough", "kneading pizza dough"])
+            elif any(w in combined_text for w in ["sauce", "tomato", "mozzarella"]):
+                queries.extend(["pizza sauce", "pizza mozzarella"])
+            elif any(w in combined_text for w in ["wood-fired", "brick oven", "oven"]):
+                queries.extend(["pizza wood oven", "pizza oven"])
+            elif any(w in combined_text for w in ["cheese pull", "perfect slice"]):
+                queries.extend(["pizza slice", "pizza cheese pull"])
+            else:
+                queries.extend(["margherita pizza", "pizza oven", "pizza dough", "pizza slice"])
+
+        elif topic_anchor == "car tire" or "tire" in topic.lower() or "car" in topic.lower():
+            if any(w in combined_text for w in ["lug", "wrench", "loosen", "nut"]):
+                queries.extend(["car wheel lug wrench", "car tire lug nuts", "changing car wheel"])
+            elif any(w in combined_text for w in ["jack", "lift", "raise", "hydraulic"]):
+                queries.extend(["hydraulic car jack", "car jack wheel", "car lift jack"])
+            elif any(w in combined_text for w in ["swap", "spare", "mount", "stud"]):
+                queries.extend(["car spare tire", "car spare wheel", "mounting car tire"])
+            elif any(w in combined_text for w in ["torque", "tighten", "star"]):
+                queries.extend(["torque wrench car wheel", "tightening car tire", "car wheel lug nuts"])
+            else:
+                queries.extend(["car tire maintenance", "car wheel tire", "changing car tire"])
+
+        elif topic_anchor == "acoustic guitar" or "guitar" in topic.lower():
+            if any(w in combined_text for w in ["fret", "thumb", "neck", "grip"]):
+                queries.extend(["acoustic guitar fretboard", "guitar neck fingers", "acoustic guitar chords"])
+            elif any(w in combined_text for w in ["strum", "pick", "rhythm", "wrist"]):
+                queries.extend(["strumming acoustic guitar", "acoustic guitar soundhole", "guitar plectrum strumming"])
+            elif any(w in combined_text for w in ["shift", "chord", "transition"]):
+                queries.extend(["acoustic guitar chords", "guitar chord transition", "acoustic guitar fingers"])
+            else:
+                queries.extend(["acoustic guitar playing", "acoustic guitar music", "acoustic guitar"])
+
+        elif topic_anchor == "burger" or "burger" in topic.lower():
+            if any(w in combined_text for w in ["smash", "sear", "skillet", "beef", "patty"]):
+                queries.extend(["smash burger skillet", "sizzling beef burger patty", "burger patty grill"])
+            elif any(w in combined_text for w in ["cheese", "cheddar", "melt", "dome"]):
+                queries.extend(["cheeseburger melted cheddar", "melted cheese burger", "cheeseburger"])
+            elif any(w in combined_text for w in ["bun", "brioche", "toast"]):
+                queries.extend(["toasted brioche burger bun", "brioche bun burger", "cheeseburger brioche"])
+            else:
+                queries.extend(["gourmet cheeseburger", "smash burger", "cheeseburger"])
+
+        elif topic_anchor in ["coffee", "espresso"] or "coffee" in topic.lower() or "espresso" in topic.lower():
+            if any(w in combined_text for w in ["grind", "wdt", "tamp", "basket"]):
+                queries.extend(["espresso portafilter", "barista espresso grounds", "tamping espresso"])
+            elif any(w in combined_text for w in ["extract", "crema", "pressure", "stream"]):
+                queries.extend(["espresso extraction crema", "espresso machine pull", "artisan espresso crema"])
+            elif any(w in combined_text for w in ["steam", "milk", "microfoam", "latte", "art"]):
+                queries.extend(["barista latte art", "pouring latte art", "espresso latte art"])
+            else:
+                queries.extend(["artisan espresso", "espresso cup crema", "coffee espresso"])
+
+        elif topic_anchor == "morning routine" or "morning" in topic.lower() or "habit" in topic.lower():
+            if any(w in combined_text for w in ["sunlight", "sun", "sunrise"]):
+                queries.extend(["morning sunlight", "morning sun", "sunrise morning"])
+            elif any(w in combined_text for w in ["priority", "planner", "planning"]):
+                queries.extend(["notebook planner pen", "daily planner desk", "time management planner"])
+            elif any(w in combined_text for w in ["deep work", "focus", "laptop", "desk"]):
+                queries.extend(["laptop desk workspace", "laptop computer desk", "computer workstation"])
+            elif any(w in combined_text for w in ["movement", "walk", "exercise"]):
+                queries.extend(["morning walk park", "walking outdoors park", "morning exercise walk"])
+            elif any(w in combined_text for w in ["reflection", "evening", "sunset"]):
+                queries.extend(["sunset city evening", "evening skyline sunset", "city sunset"])
+
+        # Title words anchored with topic_anchor
+        clean_title = re.sub(r'^(habit|step|scene|tip|rule|secret|part)\s*\d+[:\-]?\s*', '', title, flags=re.IGNORECASE).strip()
+        title_words = [w for w in re.findall(r'[a-zA-Z]+', clean_title.lower()) if w not in filler and len(w) > 2]
+        if title_words:
+            title_phrase = " ".join(title_words[:2])
+            if topic_anchor:
+                if topic_anchor.lower() not in title_phrase:
+                    queries.append(f"{topic_anchor} {title_phrase}")
+                else:
+                    queries.append(title_phrase)
+            else:
+                queries.append(title_phrase)
+
+        # Concrete nouns from description anchored with topic_anchor
+        abstract_words = {
+            "concept", "approach", "method", "overview", "mechanism", "detail", "setting",
+            "stage", "components", "elements", "resolution", "textures", "intricate",
+            "dynamic", "practical", "execution", "impact", "significance", "future",
+            "cinematic", "photorealistic", "lighting", "shallow", "depth", "field"
+        }
+        desc_words = [w for w in re.findall(r'[a-zA-Z]+', description.lower()) if w not in filler and w not in abstract_words and len(w) > 2]
+        if desc_words:
+            desc_phrase = " ".join(desc_words[:2])
+            if topic_anchor:
+                if topic_anchor.lower() not in desc_phrase:
+                    queries.append(f"{topic_anchor} {desc_phrase}")
+                else:
+                    queries.append(desc_phrase)
+            else:
+                queries.append(desc_phrase)
+
+        # Topic fallback queries (strictly anchored)
+        if topic_anchor:
+            queries.append(f"{topic_anchor}")
+            queries.append(f"{topic_anchor} photography")
+        else:
+            clean_topic = re.sub(r'^\d+\s*', '', topic).strip()
+            topic_words = [w for w in re.findall(r'[a-zA-Z]+', clean_topic.lower()) if w not in filler and len(w) > 2]
+            if topic_words:
+                queries.append(" ".join(topic_words[:3]))
+
+        # Deduplicate while preserving priority order
+        seen = set()
+        deduped = []
+        for q in queries:
+            q_clean = q.strip()
+            if q_clean and q_clean.lower() not in seen:
+                seen.add(q_clean.lower())
+                deduped.append(q_clean)
+
+        return deduped if deduped else [f"{topic_anchor} photography" if topic_anchor else "cinematic photography"]
+
+    def _try_pollinations_ai(self, prompt: str, width: int, height: int, seed: int = 1) -> Image.Image:
         """Attempts to generate a real AI image via Pollinations with a unique seed per scene."""
-        clean_prompt = f"{description}, cinematic lighting, photorealistic, 8k, highly detailed"
+        clean_prompt = f"{prompt}, authentic photography, natural lighting, photorealistic, 8k, highly detailed"
         encoded = urllib.parse.quote(clean_prompt)
         url = f"https://image.pollinations.ai/prompt/{encoded}?width={width}&height={height}&seed={seed}&nologo=true"
         
@@ -45,7 +234,8 @@ class ImageService:
         if self.pollinations_api_key:
             headers["Authorization"] = f"Bearer {self.pollinations_api_key}"
 
-        res = requests.get(url, headers=headers, timeout=20)
+        # Fast 18-second timeout so render does not stall if free tier IP rate limit is hit
+        res = requests.get(url, headers=headers, timeout=18)
         res.raise_for_status()
         
         img = Image.open(io.BytesIO(res.content)).convert("RGB")
@@ -54,57 +244,140 @@ class ImageService:
             img = img.crop((0, 0, w, h - 75))
         return ImageOps.fit(img, (width, height), Image.Resampling.LANCZOS)
 
-    def _try_wikimedia_search(self, description: str, width: int, height: int, scene_index: int = 1) -> Image.Image:
-        """Searches high-quality real photographs matching the scene description from Wikimedia Commons, ensuring distinct image per scene."""
-        query = self._extract_keywords(description)
-        url = "https://commons.wikimedia.org/w/api.php"
-        params = {
-            "action": "query",
-            "format": "json",
-            "generator": "search",
-            "gsrsearch": query,
-            "gsrnamespace": 6,
-            "gsrlimit": 12,
-            "prop": "imageinfo",
-            "iiprop": "url|mime",
-            "iiurlwidth": max(width, 1280)
-        }
+    def _try_wikimedia_search(self, queries: list[str], width: int, height: int, scene_index: int = 1, topic_anchor: str = "") -> Image.Image:
+        """Searches high-quality real photographs strictly matching the scene queries from Wikimedia Commons."""
         headers = {"User-Agent": "QoneqtContentStudio/1.0 (contact@qoneqt.com)"}
         
-        r = requests.get(url, params=params, headers=headers, timeout=12)
-        pages = r.json().get("query", {}).get("pages", {})
+        # Base negative keywords (always exclude non-photographic and cemetery content)
+        active_negative = {
+            "stamp", "postage", "tombstone", "cemetery", "grave",
+            "map", "diagram", "chart", "graph", "infographic", "drawing", "sketch", "icon", "logo", "flag"
+        }
         
-        valid_urls = []
-        for p in pages.values():
-            infos = p.get("imageinfo", [])
-            if not infos:
-                continue
-            mime = infos[0].get("mime", "")
-            if mime in ["image/jpeg", "image/png", "image/webp"]:
-                u = infos[0].get("thumburl") or infos[0].get("url")
-                if u and u not in valid_urls:
-                    valid_urls.append(u)
+        # Context-aware exclusions so we don't block legitimate topic photography
+        anchor_tokens = [t for t in re.findall(r'[a-zA-Z]+', (topic_anchor or "").lower()) if len(t) > 2]
+        is_auto = any(t in ["car", "tire", "auto", "vehicle", "wheel", "mechanic"] for t in anchor_tokens)
+        is_music = any(t in ["music", "guitar", "concert", "band", "sound"] for t in anchor_tokens)
+        is_finance = any(t in ["money", "finance", "coin", "currency", "bank", "wealth"] for t in anchor_tokens)
+        
+        if not is_auto:
+            active_negative.update({"bus", "truck", "automobile", "cadillac", "vehicle", "van", "train", "locomotive", "railway", "aircraft", "airplane", "aviation"})
+        if not is_music:
+            active_negative.update({"concert", "crowd", "stage", "musician", "band"})
+        if not is_finance:
+            active_negative.update({"coin", "currency", "banknote"})
+        
+        for q in queries:
+            try:
+                url = "https://commons.wikimedia.org/w/api.php"
+                params = {
+                    "action": "query",
+                    "format": "json",
+                    "generator": "search",
+                    "gsrsearch": f"filetype:bitmap {q}",
+                    "gsrnamespace": 6,
+                    "gsrlimit": 10,
+                    "prop": "imageinfo",
+                    "iiprop": "url|mime",
+                    "iiurlwidth": max(width, 1280)
+                }
+                
+                r = requests.get(url, params=params, headers=headers, timeout=8)
+                pages = r.json().get("query", {}).get("pages", {})
+                
+                valid_urls = []
+                for p in pages.values():
+                    p_title = p.get("title", "").lower()
+                    if any(neg in p_title for neg in active_negative):
+                        continue
+                    infos = p.get("imageinfo", [])
+                    if not infos:
+                        continue
+                    mime = infos[0].get("mime", "")
+                    if mime in ["image/jpeg", "image/png", "image/webp"]:
+                        u = infos[0].get("thumburl") or infos[0].get("url")
+                        if u and not u.endswith(".pdf") and not u.endswith(".svg"):
+                            # Strictly require anchor tokens if topic_anchor is present
+                            if anchor_tokens:
+                                if any(tok in p_title for tok in anchor_tokens):
+                                    valid_urls.append(u)
+                            else:
+                                valid_urls.append(u)
+                            
+                if not valid_urls:
+                    continue
                     
-        if not valid_urls:
-            raise Exception(f"No valid images found for query '{query}'")
-            
-        # Pick distinct image for this specific scene index
-        chosen_idx = (scene_index - 1) % len(valid_urls)
-        img_url = valid_urls[chosen_idx]
-        img_res = requests.get(img_url, headers=headers, timeout=15)
-        if img_res.status_code == 200:
-            img = Image.open(io.BytesIO(img_res.content)).convert("RGB")
-            return ImageOps.fit(img, (width, height), Image.Resampling.LANCZOS)
-            
-        raise Exception("Failed to download selected wikimedia image")
+                # Pick distinct image for this specific scene index
+                start_idx = (scene_index - 1) % len(valid_urls)
+                for offset in range(len(valid_urls)):
+                    img_url = valid_urls[(start_idx + offset) % len(valid_urls)]
+                    try:
+                        img_res = requests.get(img_url, headers=headers, timeout=8)
+                        if img_res.status_code == 200 and len(img_res.content) > 5000:
+                            img = Image.open(io.BytesIO(img_res.content)).convert("RGB")
+                            print(f"[ImageService] Found topic-matched photo for scene {scene_index} (query: '{q}'): {img_url[:70]}...")
+                            return ImageOps.fit(img, (width, height), Image.Resampling.LANCZOS)
+                    except Exception:
+                        continue
+            except Exception:
+                continue
+                
+        # Fallback to guaranteed topic anchor photography query
+        if topic_anchor and anchor_tokens:
+            try:
+                url = "https://commons.wikimedia.org/w/api.php"
+                params = {
+                    "action": "query",
+                    "format": "json",
+                    "generator": "search",
+                    "gsrsearch": f"filetype:bitmap {topic_anchor} photography",
+                    "gsrnamespace": 6,
+                    "gsrlimit": 10,
+                    "prop": "imageinfo",
+                    "iiprop": "url|mime",
+                    "iiurlwidth": max(width, 1280)
+                }
+                r = requests.get(url, params=params, headers=headers, timeout=8)
+                pages = r.json().get("query", {}).get("pages", {})
+                valid_urls = []
+                for p in pages.values():
+                    p_title = p.get("title", "").lower()
+                    if any(neg in p_title for neg in active_negative):
+                        continue
+                    infos = p.get("imageinfo", [])
+                    if not infos:
+                        continue
+                    mime = infos[0].get("mime", "")
+                    if mime in ["image/jpeg", "image/png", "image/webp"]:
+                        u = infos[0].get("thumburl") or infos[0].get("url")
+                        if u and any(tok in p_title for tok in anchor_tokens):
+                            valid_urls.append(u)
+                if valid_urls:
+                    start_idx = (scene_index - 1) % len(valid_urls)
+                    img_url = valid_urls[start_idx]
+                    img_res = requests.get(img_url, headers=headers, timeout=8)
+                    if img_res.status_code == 200 and len(img_res.content) > 5000:
+                        img = Image.open(io.BytesIO(img_res.content)).convert("RGB")
+                        print(f"[ImageService] Found guaranteed topic-anchor photo for scene {scene_index}: {img_url[:70]}...")
+                        return ImageOps.fit(img, (width, height), Image.Resampling.LANCZOS)
+            except Exception as e:
+                print(f"[ImageService] Anchor fallback note: {e}")
 
-    def _try_picsum_photography(self, width: int, height: int, seed: int = 1) -> Image.Image:
-        """Fetches high-resolution dynamic real photography guaranteed to differ per scene via seed."""
-        url = f"https://picsum.photos/seed/{seed}/{width}/{height}"
-        res = requests.get(url, timeout=12)
-        res.raise_for_status()
-        img = Image.open(io.BytesIO(res.content)).convert("RGB")
-        return ImageOps.fit(img, (width, height), Image.Resampling.LANCZOS)
+        raise Exception(f"No valid topic-anchored images found on Wikimedia Commons for '{topic_anchor}'")
+
+    def _create_themed_fallback(self, width: int, height: int, scene_index: int = 1) -> Image.Image:
+        """Creates a modern, elegant gradient studio card with subtle lighting accents."""
+        hue_offset = (scene_index * 45) % 255
+        r = 15 + ((hue_offset * 2) % 30)
+        g = 22 + ((hue_offset * 3) % 40)
+        b = 38 + ((hue_offset * 4) % 55)
+        
+        img = Image.new("RGB", (width, height), color=(r, g, b))
+        draw = ImageDraw.Draw(img)
+        # Subtle modern border glow
+        accent_color = (min(255, r + 50), min(255, g + 80), min(255, b + 120))
+        draw.rectangle([16, 16, width - 16, height - 16], outline=accent_color, width=2)
+        return img
 
     def _get_font(self, font_size: int):
         """Loads a clean, high-legibility bold TrueType font with fallbacks."""
@@ -284,7 +557,8 @@ class ImageService:
         caption: str = "", 
         text: str = "", 
         aspect_ratio: str = "9:16", 
-        scene_index: int = 1
+        scene_index: int = 1,
+        topic: str = ""
     ) -> str:
         width, height = self._get_dimensions(aspect_ratio)
         img = None
@@ -293,39 +567,51 @@ class ImageService:
         if text and not title:
             title = text
 
+        # Extract topic anchor for filtering and prioritization
+        topic_anchor = self._extract_topic_anchor(topic)
+
+        # Derive high-relevance search queries matching scene and topic
+        queries = self._derive_search_queries(
+            title=title,
+            narration=caption,
+            description=description,
+            topic=topic
+        )
+
         # Calculate a deterministic yet unique seed for this specific scene
-        seed = (scene_index * 1337) + (abs(hash(description or title or caption)) % 100000)
+        seed = (scene_index * 1337) + (abs(hash(description or title or caption or topic)) % 100000)
 
-        # Tier 1: Pollinations AI with scene seed
-        try:
-            img = self._try_pollinations_ai(description, width, height, seed=seed)
-        except Exception:
-            pass
+        # Tier 1: Pollinations AI with prompt strictly adhering to scene subject
+        ai_prompt = f"{topic}: {title}, {description or caption}"
+        if time.time() >= self.pollinations_cooldown:
+            try:
+                print(f"[ImageService] Attempting Pollinations AI generation for scene {scene_index}...")
+                img = self._try_pollinations_ai(ai_prompt, width, height, seed=seed)
+                print(f"[ImageService] Pollinations AI succeeded for scene {scene_index}")
+            except Exception as ai_err:
+                if any(err_code in str(ai_err) for err_code in ["402", "429"]):
+                    self.pollinations_cooldown = time.time() + 45
+                print(f"[ImageService] Pollinations AI unavailable ({ai_err}). Switching to topic-matched photography...")
+        else:
+            print(f"[ImageService] Pollinations cooldown active (free tier rate limit), using topic-matched photography...")
 
-        # Tier 2: Real matching photography from Wikimedia Commons (distinct image per scene_index)
+        # Tier 2: Real topic-matched high-quality photography from Wikimedia Commons
         if img is None:
             try:
-                img = self._try_wikimedia_search(description, width, height, scene_index=scene_index)
-            except Exception:
-                pass
+                img = self._try_wikimedia_search(queries, width, height, scene_index=scene_index, topic_anchor=topic_anchor)
+            except Exception as wiki_err:
+                print(f"[ImageService] Wikimedia search warning: {wiki_err}")
 
-        # Tier 3: Real dynamic high-resolution photography with unique seed
+        # Tier 3: Modern elegant gradient studio card (strictly topic-neutral, no random picsum photos)
         if img is None:
-            try:
-                img = self._try_picsum_photography(width, height, seed=seed)
-            except Exception:
-                pass
+            print(f"[ImageService] Using aesthetic gradient studio card fallback for scene {scene_index}")
+            img = self._create_themed_fallback(width, height, scene_index=scene_index)
 
-        # Tier 4: Modern Dark Gradient fallback with distinct hue per scene
-        if img is None:
-            hue_offset = (scene_index * 35) % 255
-            img = Image.new("RGB", (width, height), color=(15 + (hue_offset // 10), 23 + (hue_offset // 8), 42 + (hue_offset // 6)))
-
-        # 1. Overlay Title Shifted to the TOP of the frame
+        # 1. Overlay Title Shifted cleanly to the TOP of the frame
         if title:
             img = self._overlay_top_title(img, title, width, height, aspect_ratio)
 
-        # 2. Overlay Speech Caption in the lower-third
+        # 2. Overlay Speech Caption in the lower-third with optimal legibility
         if caption:
             img = self._overlay_speech_caption(img, caption, width, height, aspect_ratio)
 

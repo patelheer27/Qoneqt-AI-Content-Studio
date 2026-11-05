@@ -45,6 +45,7 @@ class MetadataSanitizeResponse(BaseModel):
     job_id: str
     original_filename: str
     sanitized_filename: str
+    sha256_hash: Optional[str] = None
     status: str
     download_url: str
     original: VideoMetadataSummary
@@ -58,3 +59,40 @@ class SecurityStatsResponse(BaseModel):
     account_created_at: Optional[str] = None
     videos_checked_session: int = 0
     videos_sanitized_session: int = 0
+    scans_performed_session: int = 0
+    threats_blocked_session: int = 0
+
+class MalwareStatusResponse(BaseModel):
+    enabled: bool
+    available: bool
+    mode: str # daemon, cli, or unavailable
+    engine: str
+    version: Optional[str] = None
+    host: str
+    port: int
+    max_file_size_mb: int
+    timeout_seconds: int
+    supported_types: List[str]
+    quarantine_active: bool
+    enforced: bool
+    message: str
+
+class MalwareScanResponse(BaseModel):
+    scan_id: str
+    filename: str
+    file_size: int
+    file_size_formatted: Optional[str] = None
+    sha256: str
+    status: str # "Threat Detected", "No Threat Detected", "Scanner Unavailable", "Scan Incomplete", "Scan Failed", "Invalid File", "File Too Large"
+    threat_detected: Optional[bool] = None
+    threat_name: Optional[str] = None
+    engine: str
+    engine_version: Optional[str] = None
+    scanned_at: str
+    message: str
+    can_proceed: bool = False
+
+class MalwareHistoryResponse(BaseModel):
+    scans: List[MalwareScanResponse]
+    total_count: int
+    threats_blocked: int

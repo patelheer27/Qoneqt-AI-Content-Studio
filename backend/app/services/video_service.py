@@ -10,11 +10,30 @@ class VideoService:
         os.makedirs(self.output_dir, exist_ok=True)
         
     def get_audio_duration(self, audio_path: str) -> float:
-        """Accurately calculates audio duration in seconds using ffmpeg probe."""
+        """Accurately calculates audio duration in seconds using ffprobe or ffmpeg probe."""
+        if not audio_path or not os.path.exists(audio_path):
+            return 0.0
+            
+        # Method 1: ffprobe (direct, frame-accurate duration extraction)
         try:
-            cmd = ["ffmpeg", "-i", audio_path]
+            cmd = [
+                "ffprobe", "-v", "error",
+                "-show_entries", "format=duration",
+                "-of", "default=noprint_wrappers=1:nokey=1",
+                os.path.abspath(audio_path)
+            ]
+            p = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True)
+            val = float(p.stdout.strip())
+            if val > 0:
+                return val
+        except Exception:
+            pass
+
+        # Method 2: ffmpeg -i inspection fallback
+        try:
+            cmd = ["ffmpeg", "-i", os.path.abspath(audio_path)]
             p = subprocess.run(cmd, stderr=subprocess.PIPE, stdout=subprocess.PIPE, text=True, errors="ignore")
-            m = re.search(r"Duration:\s*(\d+):(\d+):(\d+\.\d+)", p.stderr)
+            m = re.search(r"Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)", p.stderr)
             if m:
                 hours, mins, secs = m.groups()
                 return int(hours) * 3600 + int(mins) * 60 + float(secs)
@@ -22,8 +41,8 @@ class VideoService:
             print(f"[VideoService] Error determining audio duration: {e}")
         return 0.0
 
-    def render_scene(self, media_path: str, audio_path: str, duration: float, aspect_ratio: str = "9:16") -> str:
-        """Renders a single scene from an image or video clip and audio using FFmpeg without clipping speech."""
+    def render_scene(self, media_path: str, audio_path: str, duration: float = None, aspect_ratio: str = "9:16") -> str:
+        """Renders a single scene from an image or video clip and audio using FFmpeg with snappy pacing and no awkward pauses."""
         scene_filename = f"scene_{uuid.uuid4().hex}.mp4"
         scene_filepath = os.path.join(self.output_dir, scene_filename)
         
@@ -37,23 +56,29 @@ class VideoService:
         else: # 9:16 default
             w, h = 1080, 1920
 
-        # Calculate exact audio duration to guarantee speech is NEVER cut off in between
+        # Pacing: Voiceover dictates scene duration.
+        # Use a crisp 0.35s breathing buffer after speech finishes so cuts are natural and prompt,
+        # preventing awkward multi-second dead silence pauses.
         audio_duration = self.get_audio_duration(audio_path)
-        # Add a comfortable 0.45s breathing buffer after speech finishes
-        safe_duration = max(float(duration or 0), audio_duration + 0.45, 3.0)
+        if audio_duration > 0:
+            safe_duration = round(audio_duration + 0.35, 2)
+        else:
+            safe_duration = max(float(duration or 4.0), 2.5)
 
         is_video = any(media_path.lower().endswith(ext) for ext in [".mp4", ".mov", ".webm", ".avi", ".mkv"])
         
         # Ensure media covers 100% of the entire area edge-to-edge with no black borders (full-bleed coverage)
         vf_filter = f"scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h},format=yuv420p"
+        af_filter = f"apad=whole_dur={safe_duration:.2f}"
 
         if is_video:
             cmd = [
                 "ffmpeg", "-y",
                 "-stream_loop", "-1",
-                "-i", media_path,
-                "-i", audio_path,
+                "-i", os.path.abspath(media_path),
+                "-i", os.path.abspath(audio_path),
                 "-vf", vf_filter,
+                "-af", af_filter,
                 "-c:v", "libx264",
                 "-preset", "veryfast",
                 "-r", "25",
@@ -70,9 +95,10 @@ class VideoService:
                 "ffmpeg", "-y",
                 "-loop", "1",
                 "-framerate", "25",
-                "-i", media_path,
-                "-i", audio_path,
+                "-i", os.path.abspath(media_path),
+                "-i", os.path.abspath(audio_path),
                 "-vf", vf_filter,
+                "-af", af_filter,
                 "-color_range", "1",
                 "-colorspace", "bt709",
                 "-color_primaries", "bt709",

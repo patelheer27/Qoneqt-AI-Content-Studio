@@ -69,7 +69,7 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
           <SidebarLink to="/" icon={Home} label="Dashboard" />
           <SidebarLink to="/create" icon={Video} label="Create Video" />
           <SidebarLink to="/projects" icon={Folder} label="Projects" />
-          <SidebarLink to="/assets" icon={Image} label="Assets" />
+          <SidebarLink to="/assets" icon={Image} label="Image-to-Video" />
           <SidebarLink to="/templates" icon={Layout} label="Templates" />
           
           <div className="pt-3 pb-1">
@@ -140,6 +140,7 @@ function MainContent() {
         <Route path="/projects" element={<Projects />} />
         <Route path="/projects/:id" element={<ProjectDetails />} />
         <Route path="/assets" element={<Assets />} />
+        <Route path="/image-to-video" element={<Assets />} />
         <Route path="/templates" element={<Templates />} />
         <Route path="/security" element={<SecurityCenter />} />
         <Route path="/settings" element={<div className="p-8"><h2 className="text-2xl font-bold">Settings</h2></div>} />

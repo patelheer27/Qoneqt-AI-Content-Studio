@@ -31,18 +31,20 @@ class AuthService:
     def send_smtp_email(self, to_email: str, otp: str) -> bool:
         """Send OTP email via SMTP if credentials are configured."""
         if not settings.SMTP_HOST or not settings.SMTP_USERNAME or not settings.SMTP_PASSWORD:
+            print("[AuthService] SMTP not configured. Missing SMTP_HOST, SMTP_USERNAME, or SMTP_PASSWORD in backend/.env")
             return False
 
         try:
             msg = MIMEMultipart("alternative")
             msg["Subject"] = f"Your Qoneqt Login Code: {otp}"
-            msg["From"] = settings.SMTP_FROM_EMAIL or settings.SMTP_USERNAME
+            from_addr = settings.SMTP_FROM_EMAIL or settings.SMTP_USERNAME
+            msg["From"] = f"Qoneqt AI Content Studio <{from_addr}>"
             msg["To"] = to_email
 
             text_content = (
                 f"Welcome to Qoneqt AI Content Studio!\n\n"
                 f"Your 6-digit login verification code is: {otp}\n\n"
-                f"This code will expire in {settings.OTP_TTL_SECONDS // 60} minutes.\n"
+                f"This code will expire in 1 minute (60 seconds).\n"
                 f"If you did not request this code, please ignore this email."
             )
             html_content = f"""
@@ -54,7 +56,7 @@ class AuthService:
                 <div style="background: #f8fafc; border-radius: 8px; padding: 20px; text-align: center; margin-bottom: 20px;">
                     <p style="color: #374151; font-size: 14px; margin: 0 0 12px 0;">Your verification code is:</p>
                     <div style="font-size: 32px; font-weight: 800; letter-spacing: 6px; color: #2563eb; padding: 8px; font-family: monospace;">{otp}</div>
-                    <p style="color: #9ca3af; font-size: 12px; margin: 12px 0 0 0;">Expires in {settings.OTP_TTL_SECONDS // 60} minutes • Single-use only</p>
+                    <p style="color: #9ca3af; font-size: 12px; margin: 12px 0 0 0;">Expires in 1 minute • Single-use only</p>
                 </div>
                 <p style="color: #6b7280; font-size: 12px; line-height: 1.5; margin: 0;">
                     If you did not request this login code, you can safely disregard this message. Never share this code with anyone.
@@ -64,14 +66,22 @@ class AuthService:
             msg.attach(MIMEText(text_content, "plain"))
             msg.attach(MIMEText(html_content, "html"))
 
-            server = smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=10)
-            server.starttls()
+            # Support both Port 465 (Direct SSL) and Port 587/25 (STARTTLS)
+            if settings.SMTP_PORT == 465:
+                server = smtplib.SMTP_SSL(settings.SMTP_HOST, settings.SMTP_PORT, timeout=15)
+            else:
+                server = smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=15)
+                server.ehlo()
+                server.starttls()
+                server.ehlo()
+
             server.login(settings.SMTP_USERNAME, settings.SMTP_PASSWORD)
-            server.sendmail(msg["From"], [to_email], msg.as_string())
+            server.sendmail(from_addr, [to_email], msg.as_string())
             server.quit()
+            print(f"[AuthService] Successfully sent OTP to {to_email} via {settings.SMTP_HOST}")
             return True
         except Exception as e:
-            print(f"[AuthService] SMTP delivery error: {e}")
+            print(f"[AuthService] SMTP delivery error to {to_email}: {e}")
             return False
 
     def request_otp(self, db: Session, email: str) -> dict:
@@ -124,11 +134,12 @@ class AuthService:
         db.add(otp_record)
         db.commit()
 
-        # Attempt SMTP delivery
-        email_sent = self.send_smtp_email(email_clean, otp_code)
+        # Only attempt SMTP delivery if demo mode is explicitly disabled and SMTP credentials exist
+        email_sent = False
+        if not settings.OTP_DEMO_MODE and settings.SMTP_HOST and settings.SMTP_USERNAME and settings.SMTP_PASSWORD:
+            email_sent = self.send_smtp_email(email_clean, otp_code)
 
-        # Check if development demo mode is active
-        is_demo = settings.OTP_DEMO_MODE or (not email_sent and not settings.SMTP_HOST)
+        is_demo = settings.OTP_DEMO_MODE or (not email_sent)
 
         response_data = {
             "success": True,
@@ -138,7 +149,7 @@ class AuthService:
             "expires_in_seconds": settings.OTP_TTL_SECONDS,
             "is_demo_mode": is_demo,
             "dev_otp": otp_code if is_demo else None,
-            "demo_note": "Development OTP Demo Mode active: SMTP not configured. Use the provided demo code for local verification." if (is_demo and not email_sent) else None
+            "demo_note": "Demo Mode: Use the verification code displayed on screen to sign in. (Expires in 1 minute)" if is_demo else None
         }
 
         if is_demo:
@@ -146,10 +157,10 @@ class AuthService:
 
         return response_data
 
-    def verify_otp(self, db: Session, email: str, otp_code: str) -> Tuple[bool, str, Optional[User], Optional[str], bool]:
+    def verify_otp(self, db: Session, email: str, otp_code: str) -> Tuple[bool, str, Optional[User], Optional[str], bool, bool, Optional[str]]:
         """
         Validates OTP, enforces attempt limits & expiry, auto-creates user if first login.
-        Returns: (success, message, user, session_token, is_new_user)
+        Returns: (success, message, user, session_token, is_new_user, mfa_required, mfa_token)
         """
         email_clean = email.lower().strip()
         now = utc_now()
@@ -163,7 +174,7 @@ class AuthService:
         )
 
         if not otp_record:
-            return False, "No active verification code found. Please request a new one.", None, None, False
+            return False, "No active verification code found. Please request a new one.", None, None, False, False, None
 
         # Check expiry
         record_expiry = otp_record.expires_at
@@ -173,13 +184,13 @@ class AuthService:
         if now > record_expiry:
             otp_record.is_used = True
             db.commit()
-            return False, "Verification code has expired. Please request a new code.", None, None, False
+            return False, "Verification code has expired. Please request a new code.", None, None, False, False, None
 
         # Check attempt limits
         if otp_record.attempts >= settings.OTP_MAX_ATTEMPTS:
             otp_record.is_used = True
             db.commit()
-            return False, f"Maximum verification attempts ({settings.OTP_MAX_ATTEMPTS}) exceeded. Please request a new code.", None, None, False
+            return False, f"Maximum verification attempts ({settings.OTP_MAX_ATTEMPTS}) exceeded. Please request a new code.", None, None, False, False, None
 
         # Compare hash securely
         expected_hash = self._hash_otp(email_clean, otp_code)
@@ -187,7 +198,7 @@ class AuthService:
             otp_record.attempts += 1
             db.commit()
             remaining_attempts = max(0, settings.OTP_MAX_ATTEMPTS - otp_record.attempts)
-            return False, f"Invalid verification code. {remaining_attempts} attempt(s) remaining.", None, None, False
+            return False, f"Invalid verification code. {remaining_attempts} attempt(s) remaining.", None, None, False, False, None
 
         # Success! Mark OTP as used
         otp_record.is_used = True
@@ -200,7 +211,8 @@ class AuthService:
                 email=email_clean,
                 created_at=now,
                 last_login_at=now,
-                is_active=True
+                is_active=True,
+                mfa_enabled=False
             )
             db.add(user)
             db.commit()
@@ -210,6 +222,12 @@ class AuthService:
             user.last_login_at = now
             db.commit()
             db.refresh(user)
+
+        # Check if user has MFA enabled (Py_SecureVault concept: Factor 2 enforcement)
+        if user.mfa_enabled:
+            from app.services.mfa_service import mfa_service
+            mfa_token = mfa_service.create_pending_mfa_token(user.id, user.email)
+            return True, "Email verified. Multi-factor authentication required.", user, None, is_new_user, True, mfa_token
 
         # Create session
         session_token = secrets.token_urlsafe(32)
@@ -224,7 +242,7 @@ class AuthService:
         db.add(session_record)
         db.commit()
 
-        return True, "Login successful.", user, session_token, is_new_user
+        return True, "Login successful.", user, session_token, is_new_user, False, None
 
     def validate_session(self, db: Session, session_token: str) -> Optional[User]:
         """Validates session token and returns active User if valid."""

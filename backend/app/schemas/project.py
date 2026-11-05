@@ -11,9 +11,16 @@ class ProjectBase(BaseModel):
     duration: Optional[int] = 60
     tone: Optional[str] = "Professional"
     language: Optional[str] = "English"
+    sanitize_metadata: Optional[bool] = True
 
 class ProjectCreate(ProjectBase):
     pass
+
+class MetadataPolicyRequest(BaseModel):
+    sanitize_metadata: bool = True
+
+class RenderVideoRequest(BaseModel):
+    sanitize_metadata: Optional[bool] = True
 
 class SceneSchema(BaseModel):
     scene_id: int
@@ -38,6 +45,10 @@ class ProjectResponse(ProjectBase):
     title: str
     status: str
     output_path: Optional[str] = None
+    raw_output_path: Optional[str] = None
+    metadata_policy: Optional[str] = "sanitized"
+    sanitize_metadata: Optional[bool] = True
+    metadata_info: Optional[Dict[str, Any]] = None
     strategy: Optional[Dict[str, Any]] = None
     script: Optional[Dict[str, Any]] = None
     scenes: Optional[List[Dict[str, Any]]] = None

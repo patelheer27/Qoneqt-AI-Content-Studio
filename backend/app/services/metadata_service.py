@@ -207,6 +207,282 @@ class MetadataService:
                 except Exception:
                     pass
 
+    def inspect_file_path(self, file_path: str, filename: Optional[str] = None) -> Dict[str, Any]:
+        """Inspects video metadata directly from a local filepath on disk."""
+        if not os.path.exists(file_path):
+            raise FileNotFoundError(f"File not found: {file_path}")
+        raw = self.run_ffprobe(file_path)
+        if not raw or not raw.get("format"):
+            raise HTTPException(status_code=400, detail="Invalid video file or metadata unreadable by FFprobe.")
+        return self.extract_summary(raw, filename or os.path.basename(file_path), file_path)
+
+    def sanitize_file_path(
+        self,
+        input_path: str,
+        output_path: Optional[str] = None,
+        original_filename: str = "video.mp4"
+    ) -> Dict[str, Any]:
+        """
+        Core sanitization pipeline:
+        1. Inspects original metadata via FFprobe
+        2. Applies FFmpeg metadata stripping (-map_metadata -1 -map_chapters -1 -fflags +bitexact)
+        3. Falls back to compatible re-encoding only if stream copying fails
+        4. Verifies output validity and stream integrity
+        5. Performs before-and-after metadata comparison
+        6. Computes SHA-256 hash of the exact output file
+        """
+        if not os.path.exists(input_path):
+            raise FileNotFoundError(f"Input video file not found: {input_path}")
+
+        ffmpeg_bin = self._find_ffmpeg_cmd()
+        ext = os.path.splitext(input_path)[1].lower() or ".mp4"
+
+        if not output_path:
+            job_id = uuid.uuid4().hex
+            sanitized_filename = f"sanitized_{job_id[:8]}{ext}"
+            output_path = os.path.join(self.sanitized_dir, sanitized_filename)
+        else:
+            sanitized_filename = os.path.basename(output_path)
+            os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
+
+        # 1. Inspect original with FFprobe
+        orig_raw = self.run_ffprobe(input_path)
+        if not orig_raw or not orig_raw.get("format"):
+            raise HTTPException(status_code=400, detail="Unable to inspect original video metadata with FFprobe.")
+        orig_summary = self.extract_summary(orig_raw, original_filename, input_path)
+
+        # 2. Run FFmpeg sanitization
+        # -map 0 ensures all streams (video, audio) are mapped
+        # -map_metadata -1 removes container metadata
+        # -map_chapters -1 removes chapters
+        # -fflags +bitexact -flags:v +bitexact -flags:a +bitexact prevents writing encoder timestamp/tags
+        cmd_copy = [
+            ffmpeg_bin, "-y",
+            "-i", os.path.abspath(input_path),
+            "-map", "0",
+            "-map_metadata", "-1",
+            "-map_chapters", "-1",
+            "-fflags", "+bitexact",
+            "-flags:v", "+bitexact",
+            "-flags:a", "+bitexact",
+            "-c", "copy",
+            os.path.abspath(output_path)
+        ]
+
+        res = subprocess.run(
+            cmd_copy,
+            capture_output=True,
+            text=True,
+            timeout=settings.FFMPEG_TIMEOUT_SECONDS,
+            check=False
+        )
+
+        needs_reencode = False
+        if res.returncode != 0 or not os.path.exists(output_path) or os.path.getsize(output_path) == 0:
+            needs_reencode = True
+        else:
+            test_probe = self.run_ffprobe(output_path)
+            if not test_probe or not test_probe.get("format"):
+                needs_reencode = True
+
+        if needs_reencode:
+            print(f"[MetadataService] Stream copy failed or unreadable, re-encoding for compatibility: {res.stderr}")
+            cmd_fallback = [
+                ffmpeg_bin, "-y",
+                "-i", os.path.abspath(input_path),
+                "-map_metadata", "-1",
+                "-map_chapters", "-1",
+                "-fflags", "+bitexact",
+                "-c:v", "libx264",
+                "-preset", "veryfast",
+                "-crf", "18",
+                "-c:a", "aac",
+                "-b:a", "192k",
+                "-pix_fmt", "yuv420p",
+                "-movflags", "+faststart",
+                os.path.abspath(output_path)
+            ]
+            res_fallback = subprocess.run(
+                cmd_fallback,
+                capture_output=True,
+                text=True,
+                timeout=settings.FFMPEG_TIMEOUT_SECONDS,
+                check=False
+            )
+            if res_fallback.returncode != 0 or not os.path.exists(output_path) or os.path.getsize(output_path) == 0:
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"FFmpeg sanitization failed: {res_fallback.stderr[:300] if res_fallback.stderr else 'Unknown error'}"
+                )
+
+        # 3. Output verification using FFprobe
+        sanitized_raw = self.run_ffprobe(output_path)
+        if not sanitized_raw or not sanitized_raw.get("format"):
+            raise HTTPException(status_code=500, detail="Sanitized output verification failed: Output unreadable by FFprobe.")
+
+        sanitized_summary = self.extract_summary(sanitized_raw, sanitized_filename, output_path)
+
+        # Verify stream fidelity
+        orig_has_video = any(s.get("codec_type") == "video" for s in orig_raw.get("streams", []))
+        orig_has_audio = any(s.get("codec_type") == "audio" for s in orig_raw.get("streams", []))
+        san_has_video = any(s.get("codec_type") == "video" for s in sanitized_raw.get("streams", []))
+        san_has_audio = any(s.get("codec_type") == "audio" for s in sanitized_raw.get("streams", []))
+
+        if orig_has_video and not san_has_video:
+            raise HTTPException(status_code=500, detail="Sanitization verification failed: Video stream was dropped.")
+        if orig_has_audio and not san_has_audio:
+            raise HTTPException(status_code=500, detail="Sanitization verification failed: Audio stream was dropped.")
+
+        # 4. Generate before-and-after comparison
+        removed_fields = []
+        retained_fields = []
+        unverified_fields = []
+        comparison_details = []
+
+        # Check creation_time
+        if orig_summary.get("creation_time"):
+            if not sanitized_summary.get("creation_time"):
+                removed_fields.append("Creation Timestamp (creation_time)")
+                comparison_details.append({
+                    "field": "Creation Timestamp",
+                    "original": str(orig_summary.get("creation_time")),
+                    "sanitized": "Removed",
+                    "status": "Removed"
+                })
+            else:
+                comparison_details.append({
+                    "field": "Creation Timestamp",
+                    "original": str(orig_summary.get("creation_time")),
+                    "sanitized": str(sanitized_summary.get("creation_time")),
+                    "status": "Retained"
+                })
+
+        # Check encoder / software
+        if orig_summary.get("encoder"):
+            if not sanitized_summary.get("encoder") or sanitized_summary.get("encoder") != orig_summary.get("encoder"):
+                removed_fields.append("Encoder / Software Identifying Tag")
+                comparison_details.append({
+                    "field": "Encoder / Software Tag",
+                    "original": str(orig_summary.get("encoder")),
+                    "sanitized": str(sanitized_summary.get("encoder")) if sanitized_summary.get("encoder") else "Removed",
+                    "status": "Sanitized"
+                })
+            else:
+                comparison_details.append({
+                    "field": "Encoder / Software Tag",
+                    "original": str(orig_summary.get("encoder")),
+                    "sanitized": str(sanitized_summary.get("encoder")),
+                    "status": "Retained"
+                })
+
+        # Check location
+        if orig_summary.get("location"):
+            if not sanitized_summary.get("location"):
+                removed_fields.append("GPS / Geolocation Metadata")
+                comparison_details.append({
+                    "field": "Geolocation",
+                    "original": str(orig_summary.get("location")),
+                    "sanitized": "Removed",
+                    "status": "Removed"
+                })
+            else:
+                comparison_details.append({
+                    "field": "Geolocation",
+                    "original": str(orig_summary.get("location")),
+                    "sanitized": str(sanitized_summary.get("location")),
+                    "status": "Retained"
+                })
+
+        # Check container tags
+        orig_tags = orig_summary.get("container_tags", {})
+        san_tags = sanitized_summary.get("container_tags", {})
+        for k, v in orig_tags.items():
+            if k not in ["major_brand", "minor_version", "compatible_brands"]:
+                if k not in san_tags:
+                    removed_fields.append(f"Tag: {k}")
+                    comparison_details.append({
+                        "field": f"Container Tag ({k})",
+                        "original": str(v),
+                        "sanitized": "Removed",
+                        "status": "Removed"
+                    })
+                else:
+                    comparison_details.append({
+                        "field": f"Container Tag ({k})",
+                        "original": str(v),
+                        "sanitized": str(san_tags[k]),
+                        "status": "Retained"
+                    })
+
+        # Check chapters
+        if orig_summary.get("chapters_count", 0) > 0:
+            if sanitized_summary.get("chapters_count", 0) == 0:
+                removed_fields.append(f"Chapters ({orig_summary.get('chapters_count')} chapters)")
+                comparison_details.append({
+                    "field": "Chapters",
+                    "original": f"{orig_summary.get('chapters_count')} chapters",
+                    "sanitized": "0 chapters",
+                    "status": "Removed"
+                })
+
+        # Audio/Video Streams Retained
+        retained_fields.append(f"Video Stream ({sanitized_summary.get('video_codec', 'video')} {sanitized_summary.get('dimensions', '')})")
+        if sanitized_summary.get("audio_codec"):
+            retained_fields.append(f"Audio Stream ({sanitized_summary.get('audio_codec')})")
+
+        # 5. Calculate SHA-256 hash of the exact final output file
+        from app.services.integrity_service import integrity_service
+        hash_info = integrity_service.calculate_filepath_hash(output_path, filename=sanitized_filename)
+        sha256_hash = hash_info["sha256_hash"]
+
+        # Truthful status determination
+        has_removable_orig = bool(
+            orig_summary.get("creation_time") or
+            orig_summary.get("location") or
+            orig_summary.get("chapters_count", 0) > 0 or
+            any(k not in ["major_brand", "minor_version", "compatible_brands"] for k in orig_tags.keys())
+        )
+
+        if not has_removable_orig and len(removed_fields) == 0:
+            verification_status = "clean_original"
+            status_text = "Video ready. No removable metadata was detected in the original file."
+            summary_text = (
+                f"Video output verified ({sanitized_summary.get('dimensions', '')}). "
+                f"No removable metadata was detected in the source video."
+            )
+        elif any(d["status"] == "Retained" for d in comparison_details):
+            verification_status = "partial"
+            status_text = "Video ready. Some supported metadata was removed, but certain metadata fields remain."
+            summary_text = (
+                f"Removed {len(removed_fields)} identifying metadata fields while preserving full "
+                f"{sanitized_summary.get('dimensions', '')} video and audio stream fidelity."
+            )
+        else:
+            verification_status = "verified"
+            status_text = "Video ready. Supported metadata sanitization was completed and the output was verified."
+            summary_text = (
+                f"Successfully sanitized video container. Removed {len(removed_fields)} identifying tags/fields while "
+                f"preserving full {sanitized_summary.get('dimensions', '')} video and audio playback stream fidelity."
+            )
+
+        return {
+            "sanitized_path": output_path,
+            "sanitized_filename": sanitized_filename,
+            "sha256_hash": sha256_hash,
+            "file_size_bytes": hash_info["bytes_processed"],
+            "verification_status": verification_status,
+            "status_text": status_text,
+            "original": orig_summary,
+            "sanitized": sanitized_summary,
+            "comparison": {
+                "removed_fields": removed_fields,
+                "retained_fields": retained_fields,
+                "unverified_fields": unverified_fields,
+                "details": comparison_details
+            },
+            "summary": summary_text
+        }
+
     async def sanitize(
         self,
         file: UploadFile,
@@ -215,7 +491,8 @@ class MetadataService:
     ) -> Dict[str, Any]:
         """
         Inspects original metadata, runs FFmpeg with -map_metadata -1 to strip metadata,
-        inspects sanitized output, generates before-and-after comparison, and saves job for download.
+        inspects sanitized output, generates before-and-after comparison, calculates SHA-256,
+        and saves job for download.
         """
         temp_path, original_filename = await self.save_uploaded_temp(file)
         job_id = uuid.uuid4().hex
@@ -223,152 +500,12 @@ class MetadataService:
         sanitized_filename = f"sanitized_{job_id[:8]}{ext}"
         sanitized_path = os.path.join(self.sanitized_dir, sanitized_filename)
 
-        ffmpeg_bin = self._find_ffmpeg_cmd()
-
         try:
-            # 1. Inspect original
-            orig_raw = self.run_ffprobe(temp_path)
-            if not orig_raw or not orig_raw.get("format"):
-                raise HTTPException(status_code=400, detail="Unable to inspect original video metadata.")
-            orig_summary = self.extract_summary(orig_raw, original_filename, temp_path)
-
-            # 2. Run FFmpeg sanitization
-            # -map_metadata -1 removes container metadata
-            # -map_chapters -1 removes chapters
-            # -fflags +bitexact -flags:v +bitexact -flags:a +bitexact prevents writing encoder timestamp/tags
-            cmd = [
-                ffmpeg_bin, "-y",
-                "-i", temp_path,
-                "-map_metadata", "-1",
-                "-map_chapters", "-1",
-                "-fflags", "+bitexact",
-                "-flags:v", "+bitexact",
-                "-flags:a", "+bitexact",
-                "-c", "copy",
-                sanitized_path
-            ]
-            
-            res = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=settings.FFMPEG_TIMEOUT_SECONDS,
-                check=False
+            result = self.sanitize_file_path(
+                input_path=temp_path,
+                output_path=sanitized_path,
+                original_filename=original_filename
             )
-
-            # If stream copy failed (e.g. format header mismatch), fallback to re-encode
-            if res.returncode != 0 or not os.path.exists(sanitized_path) or os.path.getsize(sanitized_path) == 0:
-                print(f"[MetadataService] Stream copy failed, re-encoding for compatibility: {res.stderr}")
-                cmd_fallback = [
-                    ffmpeg_bin, "-y",
-                    "-i", temp_path,
-                    "-map_metadata", "-1",
-                    "-map_chapters", "-1",
-                    "-fflags", "+bitexact",
-                    "-c:v", "libx264",
-                    "-preset", "veryfast",
-                    "-c:a", "aac",
-                    sanitized_path
-                ]
-                res_fallback = subprocess.run(
-                    cmd_fallback,
-                    capture_output=True,
-                    text=True,
-                    timeout=settings.FFMPEG_TIMEOUT_SECONDS,
-                    check=False
-                )
-                if res_fallback.returncode != 0:
-                    raise HTTPException(
-                        status_code=500,
-                        detail=f"FFmpeg sanitization failed: {res_fallback.stderr[:300]}"
-                    )
-
-            # 3. Inspect sanitized output with FFprobe
-            sanitized_raw = self.run_ffprobe(sanitized_path)
-            sanitized_summary = self.extract_summary(sanitized_raw, sanitized_filename, sanitized_path)
-
-            # 4. Generate rigorous before-and-after comparison
-            removed_fields = []
-            retained_fields = []
-            unverified_fields = []
-            comparison_details = []
-
-            # Check creation_time
-            if orig_summary.get("creation_time"):
-                if not sanitized_summary.get("creation_time"):
-                    removed_fields.append("Creation Timestamp (creation_time)")
-                    comparison_details.append({
-                        "field": "Creation Timestamp",
-                        "original": str(orig_summary.get("creation_time")),
-                        "sanitized": "Removed",
-                        "status": "Removed"
-                    })
-                else:
-                    comparison_details.append({
-                        "field": "Creation Timestamp",
-                        "original": str(orig_summary.get("creation_time")),
-                        "sanitized": str(sanitized_summary.get("creation_time")),
-                        "status": "Retained"
-                    })
-
-            # Check encoder / software
-            if orig_summary.get("encoder"):
-                if not sanitized_summary.get("encoder") or sanitized_summary.get("encoder") != orig_summary.get("encoder"):
-                    removed_fields.append("Encoder / Software Identifying Tag")
-                    comparison_details.append({
-                        "field": "Encoder / Software Tag",
-                        "original": str(orig_summary.get("encoder")),
-                        "sanitized": str(sanitized_summary.get("encoder")) if sanitized_summary.get("encoder") else "Removed",
-                        "status": "Sanitized"
-                    })
-
-            # Check location
-            if orig_summary.get("location"):
-                if not sanitized_summary.get("location"):
-                    removed_fields.append("GPS / Geolocation Metadata")
-                    comparison_details.append({
-                        "field": "Geolocation",
-                        "original": str(orig_summary.get("location")),
-                        "sanitized": "Removed",
-                        "status": "Removed"
-                    })
-
-            # Check container tags
-            orig_tags = orig_summary.get("container_tags", {})
-            san_tags = sanitized_summary.get("container_tags", {})
-            for k, v in orig_tags.items():
-                if k not in ["major_brand", "minor_version", "compatible_brands"]: # essential MP4 container headers
-                    if k not in san_tags:
-                        removed_fields.append(f"Tag: {k}")
-                        comparison_details.append({
-                            "field": f"Container Tag ({k})",
-                            "original": str(v),
-                            "sanitized": "Removed",
-                            "status": "Removed"
-                        })
-                    else:
-                        comparison_details.append({
-                            "field": f"Container Tag ({k})",
-                            "original": str(v),
-                            "sanitized": str(san_tags[k]),
-                            "status": "Retained"
-                        })
-
-            # Check chapters
-            if orig_summary.get("chapters_count", 0) > 0:
-                if sanitized_summary.get("chapters_count", 0) == 0:
-                    removed_fields.append(f"Chapters ({orig_summary.get('chapters_count')} chapters)")
-                    comparison_details.append({
-                        "field": "Chapters",
-                        "original": f"{orig_summary.get('chapters_count')} chapters",
-                        "sanitized": "0 chapters",
-                        "status": "Removed"
-                    })
-
-            # Audio/Video Streams Retained
-            retained_fields.append(f"Video Stream ({sanitized_summary.get('video_codec', 'video')} {sanitized_summary.get('dimensions', '')})")
-            if sanitized_summary.get("audio_codec"):
-                retained_fields.append(f"Audio Stream ({sanitized_summary.get('audio_codec')})")
 
             # 5. Save job to database
             now = utc_now()
@@ -379,14 +516,9 @@ class MetadataService:
                 original_filename=original_filename,
                 sanitized_filename=sanitized_filename,
                 sanitized_path=sanitized_path,
-                original_metadata=orig_summary,
-                sanitized_metadata=sanitized_summary,
-                comparison={
-                    "removed_fields": removed_fields,
-                    "retained_fields": retained_fields,
-                    "unverified_fields": unverified_fields,
-                    "details": comparison_details
-                },
+                original_metadata=result["original"],
+                sanitized_metadata=result["sanitized"],
+                comparison=result["comparison"],
                 created_at=now,
                 expires_at=expires_at
             )
@@ -399,7 +531,8 @@ class MetadataService:
                 details={
                     "job_id": job_id,
                     "filename": original_filename,
-                    "removed_count": len(removed_fields)
+                    "removed_count": len(result["comparison"]["removed_fields"]),
+                    "sha256": result["sha256_hash"]
                 }
             )
             db.add(log)
@@ -409,20 +542,13 @@ class MetadataService:
                 "job_id": job_id,
                 "original_filename": original_filename,
                 "sanitized_filename": sanitized_filename,
-                "status": "Sanitization complete. Clean copy ready for download.",
+                "sha256_hash": result["sha256_hash"],
+                "status": result["status_text"],
                 "download_url": f"/api/security/metadata/download/{job_id}",
-                "original": orig_summary,
-                "sanitized": sanitized_summary,
-                "comparison": {
-                    "removed_fields": removed_fields,
-                    "retained_fields": retained_fields,
-                    "unverified_fields": unverified_fields,
-                    "details": comparison_details
-                },
-                "summary": (
-                    f"Successfully sanitized video container. Removed {len(removed_fields)} identifying tags/fields while "
-                    f"preserving full {sanitized_summary.get('dimensions', '')} video and audio playback stream fidelity."
-                )
+                "original": result["original"],
+                "sanitized": result["sanitized"],
+                "comparison": result["comparison"],
+                "summary": result["summary"]
             }
         finally:
             if os.path.exists(temp_path):

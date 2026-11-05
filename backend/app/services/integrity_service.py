@@ -1,5 +1,6 @@
 import hashlib
 import hmac
+import os
 import re
 from typing import Tuple, Dict, Any, Optional
 from fastapi import UploadFile, HTTPException
@@ -18,6 +19,30 @@ class IntegrityService:
                 return f"{size_bytes:.2f} {unit}"
             size_bytes /= 1024.0
         return f"{size_bytes:.2f} TB"
+
+    def calculate_filepath_hash(self, file_path: str, filename: Optional[str] = None) -> Dict[str, Any]:
+        """Calculates SHA-256 incrementally by streaming file bytes in 64KB chunks directly from disk."""
+        if not os.path.exists(file_path):
+            raise FileNotFoundError(f"File not found: {file_path}")
+
+        sha256 = hashlib.sha256()
+        total_bytes = 0
+        with open(file_path, "rb") as f:
+            while True:
+                chunk = f.read(CHUNK_SIZE)
+                if not chunk:
+                    break
+                total_bytes += len(chunk)
+                sha256.update(chunk)
+
+        calculated_hash = sha256.hexdigest()
+        return {
+            "filename": filename or os.path.basename(file_path),
+            "sha256_hash": calculated_hash,
+            "bytes_processed": total_bytes,
+            "size_formatted": self.format_size(total_bytes),
+            "status": "Hash calculated successfully."
+        }
 
     async def calculate_hash(
         self,

@@ -7,6 +7,7 @@ export interface User {
   created_at: string;
   last_login_at: string;
   is_active: boolean;
+  mfa_enabled?: boolean;
 }
 
 interface AuthContextType {

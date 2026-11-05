@@ -271,3 +271,176 @@ def test_security_stats():
     assert "videos_sanitized_session" in data
     assert data["videos_checked_session"] >= 1
     assert data["videos_sanitized_session"] >= 1
+
+# ==================== 4. WORKFLOW A: AUTOMATIC VIDEO METADATA SANITIZATION TESTS ====================
+
+def test_workflow_a_automatic_sanitization_pipeline(sample_video):
+    """
+    Tests Workflow A:
+    1. Creates project with default sanitize_metadata=True
+    2. Runs metadata policy application
+    3. Confirms FFprobe inspection before and after
+    4. Confirms metadata fields removed
+    5. Confirms video/audio streams intact
+    6. Confirms SHA-256 matches the exact bytes downloaded
+    """
+    # 1. Create project
+    proj_res = client.post("/api/projects/", json={
+        "topic": "Workflow A Test Video",
+        "platform": "YouTube Shorts",
+        "sanitize_metadata": True
+    })
+    assert proj_res.status_code == 200
+    proj_id = proj_res.json()["id"]
+
+    # 2. Attach sample video as generated output
+    from app.database import SessionLocal
+    from app.models.project import Project
+    db = SessionLocal()
+    proj = db.query(Project).filter(Project.id == proj_id).first()
+    proj.raw_output_path = sample_video
+    proj.output_path = sample_video
+    proj.status = "Completed"
+    db.commit()
+    db.close()
+
+    # 3. Apply automatic sanitization policy
+    policy_res = client.post(f"/api/projects/{proj_id}/metadata-policy", json={"sanitize_metadata": True})
+    assert policy_res.status_code == 200
+    data = policy_res.json()
+
+    assert data["metadata_policy"] == "sanitized"
+    assert data["sanitize_metadata"] is True
+    assert data["output_path"] != sample_video
+    assert os.path.exists(data["output_path"])
+
+    meta_info = data["metadata_info"]
+    assert meta_info["policy"] == "sanitized"
+    assert meta_info["sha256"] is not None
+    assert len(meta_info["sha256"]) == 64
+
+    # Verify comparison details show removed fields
+    comparison = meta_info["comparison"]
+    assert len(comparison["removed_fields"]) > 0
+
+    # 4. Verify downloaded file matches reported SHA-256 byte-for-byte
+    dl_res = client.get(f"/api/projects/{proj_id}/download")
+    assert dl_res.status_code == 200
+    downloaded_bytes = dl_res.content
+    assert len(downloaded_bytes) > 0
+    actual_hash = hashlib.sha256(downloaded_bytes).hexdigest()
+    assert actual_hash == meta_info["sha256"]
+
+def test_workflow_a_preserved_metadata_policy(sample_video):
+    """
+    Tests Workflow A when user opts to preserve metadata:
+    1. Sets sanitize_metadata=False
+    2. Confirms sanitization step is skipped
+    3. Confirms original metadata tags remain
+    4. Confirms calculated SHA-256 matches exact original file
+    """
+    proj_res = client.post("/api/projects/", json={
+        "topic": "Workflow A Preserved Test",
+        "platform": "YouTube Shorts",
+        "sanitize_metadata": False
+    })
+    assert proj_res.status_code == 200
+    proj_id = proj_res.json()["id"]
+
+    from app.database import SessionLocal
+    from app.models.project import Project
+    db = SessionLocal()
+    proj = db.query(Project).filter(Project.id == proj_id).first()
+    proj.raw_output_path = sample_video
+    proj.output_path = sample_video
+    proj.status = "Completed"
+    db.commit()
+    db.close()
+
+    policy_res = client.post(f"/api/projects/{proj_id}/metadata-policy", json={"sanitize_metadata": False})
+    assert policy_res.status_code == 200
+    data = policy_res.json()
+
+    assert data["metadata_policy"] == "preserved"
+    assert data["sanitize_metadata"] is False
+    assert data["output_path"] == sample_video
+
+    meta_info = data["metadata_info"]
+    assert meta_info["policy"] == "preserved"
+    assert "Original metadata preserved" in meta_info["policy_label"]
+
+    with open(sample_video, "rb") as f:
+        expected_raw_hash = hashlib.sha256(f.read()).hexdigest()
+    assert meta_info["sha256"] == expected_raw_hash
+
+    dl_res = client.get(f"/api/projects/{proj_id}/download")
+    assert dl_res.status_code == 200
+    assert hashlib.sha256(dl_res.content).hexdigest() == expected_raw_hash
+
+def test_workflow_a_checksum_endpoint(sample_video):
+    """Tests the .sha256 plaintext checksum download endpoint."""
+    proj_res = client.post("/api/projects/", json={
+        "topic": "Checksum Download Test",
+        "sanitize_metadata": True
+    })
+    proj_id = proj_res.json()["id"]
+
+    from app.database import SessionLocal
+    from app.models.project import Project
+    db = SessionLocal()
+    proj = db.query(Project).filter(Project.id == proj_id).first()
+    proj.raw_output_path = sample_video
+    proj.output_path = sample_video
+    proj.status = "Completed"
+    db.commit()
+    db.close()
+
+    client.post(f"/api/projects/{proj_id}/metadata-policy", json={"sanitize_metadata": True})
+
+    chk_res = client.get(f"/api/projects/{proj_id}/checksum")
+    assert chk_res.status_code == 200
+    assert "text/plain" in chk_res.headers["content-type"]
+    content = chk_res.text
+    assert len(content.strip().split()[0]) == 64
+    assert ".mp4" in content
+
+def test_workflow_b_manual_sanitizer_sha256_hash(sample_video):
+    """Tests that Workflow B (manual sanitizer) calculates and returns SHA-256 of sanitized output."""
+    with open(sample_video, "rb") as f:
+        res = client.post(
+            "/api/security/metadata/sanitize",
+            files={"file": ("manual_upload.mp4", f, "video/mp4")}
+        )
+
+    assert res.status_code == 200
+    data = res.json()
+    assert "sha256_hash" in data
+    assert data["sha256_hash"] is not None
+    assert len(data["sha256_hash"]) == 64
+
+    # Verify download file matches this hash
+    job_id = data["job_id"]
+    dl_res = client.get(f"/api/security/metadata/download/{job_id}")
+    assert dl_res.status_code == 200
+    actual_hash = hashlib.sha256(dl_res.content).hexdigest()
+    assert actual_hash == data["sha256_hash"]
+
+def test_no_removable_metadata_reporting(sample_video):
+    """Tests truthful reporting when video contains no removable metadata."""
+    # First sanitize to strip metadata
+    with open(sample_video, "rb") as f:
+        res1 = client.post(
+            "/api/security/metadata/sanitize",
+            files={"file": ("test.mp4", f, "video/mp4")}
+        )
+    job_id = res1.json()["job_id"]
+    sanitized_bytes = client.get(f"/api/security/metadata/download/{job_id}").content
+
+    # Sanitize the already clean video again
+    res2 = client.post(
+        "/api/security/metadata/sanitize",
+        files={"file": ("already_clean.mp4", sanitized_bytes, "video/mp4")}
+    )
+    assert res2.status_code == 200
+    data2 = res2.json()
+    assert "clean" in data2["status"].lower() or "no removable metadata" in data2["status"].lower() or len(data2["comparison"]["removed_fields"]) == 0

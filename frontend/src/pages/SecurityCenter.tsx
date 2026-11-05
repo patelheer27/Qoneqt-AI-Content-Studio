@@ -1,16 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  ShieldCheck, FileCheck, Eraser, KeyRound, Copy, Check, 
+  ShieldCheck, FileCheck, Eraser, Copy, Check, 
   AlertTriangle, RefreshCw, Download, ArrowRight, Info, 
-  Upload, FileVideo, HardDrive, CheckCircle2, XCircle, Clock,
-  Eye, Sparkles, UserCheck, LogOut
+  Upload, FileVideo, CheckCircle2, XCircle,
+  Eye, Sparkles
 } from 'lucide-react';
 import { securityApi } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 
 export default function SecurityCenter() {
-  const { user, logout } = useAuth();
-  const [activeTab, setActiveTab] = useState<'integrity' | 'metadata' | 'auth'>('integrity');
+  const { user } = useAuth();
+  const [activeTab, setActiveTab] = useState<'integrity' | 'metadata'>('integrity');
 
   // Stats
   const [stats, setStats] = useState<{
@@ -18,10 +18,14 @@ export default function SecurityCenter() {
     user_email?: string;
     videos_checked_session: number;
     videos_sanitized_session: number;
+    scans_performed_session: number;
+    threats_blocked_session: number;
   }>({
     authenticated: true,
     videos_checked_session: 0,
     videos_sanitized_session: 0,
+    scans_performed_session: 0,
+    threats_blocked_session: 0,
   });
 
   const loadStats = async () => {
@@ -228,7 +232,7 @@ export default function SecurityCenter() {
       </div>
 
       {/* Feature Selector Tabs */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* Card 1: Video Integrity Checker */}
         <button
           onClick={() => setActiveTab('integrity')}
@@ -276,31 +280,6 @@ export default function SecurityCenter() {
           <h3 className="font-bold text-gray-900 text-base">Video Metadata Sanitizer</h3>
           <p className="text-xs text-gray-500 mt-1">
             Inspect container tags using FFprobe and create a sanitized output video using FFmpeg without overwriting original.
-          </p>
-        </button>
-
-        {/* Card 3: Email + OTP Auth */}
-        <button
-          onClick={() => setActiveTab('auth')}
-          className={`p-5 rounded-2xl text-left border transition-all cursor-pointer ${
-            activeTab === 'auth'
-              ? 'bg-white border-blue-600 ring-2 ring-blue-600/20 shadow-md'
-              : 'bg-white/70 border-gray-200 hover:bg-white hover:border-gray-300'
-          }`}
-        >
-          <div className="flex items-center justify-between mb-3">
-            <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold">
-              <KeyRound className="w-5 h-5" />
-            </div>
-            {activeTab === 'auth' && (
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 uppercase">
-                Active Tool
-              </span>
-            )}
-          </div>
-          <h3 className="font-bold text-gray-900 text-base">Email + OTP Verification</h3>
-          <p className="text-xs text-gray-500 mt-1">
-            Manage your passwordless authenticated session and view cryptographic authentication parameters.
           </p>
         </button>
       </div>
@@ -710,6 +689,40 @@ export default function SecurityCenter() {
                 </div>
               </div>
 
+              {/* Sanitized File SHA-256 Fingerprint */}
+              {sanitizedResult.sha256_hash && (
+                <div className="p-4 bg-slate-900 text-white rounded-xl space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
+                      <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                      Sanitized File SHA-256 Fingerprint
+                    </span>
+                    <button
+                      onClick={() => copyToClipboard(sanitizedResult.sha256_hash)}
+                      className="inline-flex items-center gap-1 text-xs font-bold text-emerald-400 hover:text-emerald-300 bg-white/10 hover:bg-white/20 px-2.5 py-1 rounded-lg transition-colors cursor-pointer"
+                    >
+                      {hashCopied ? (
+                        <>
+                          <Check className="w-3.5 h-3.5 text-emerald-400" />
+                          <span>Copied!</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-3.5 h-3.5" />
+                          <span>Copy Hash</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                  <div className="font-mono text-xs sm:text-sm font-bold text-emerald-300 break-all bg-black/40 p-2.5 rounded-lg border border-white/10">
+                    {sanitizedResult.sha256_hash}
+                  </div>
+                  <div className="text-[11px] text-slate-400">
+                    Cryptographic hash of the exact downloadable sanitized file ({sanitizedResult.sanitized_filename})
+                  </div>
+                </div>
+              )}
+
               {/* Preserved Streams Indicator */}
               <div className="flex flex-wrap items-center gap-2 text-xs">
                 <span className="font-bold text-gray-700">Preserved Streams:</span>
@@ -732,66 +745,6 @@ export default function SecurityCenter() {
         </div>
       )}
 
-      {/* ========================================================================= */}
-      {/* TAB 3: EMAIL + OTP AUTHENTICATION SUMMARY                                 */}
-      {/* ========================================================================= */}
-      {activeTab === 'auth' && (
-        <div className="bg-white rounded-3xl p-6 sm:p-8 border border-gray-200 shadow-sm space-y-6">
-          <div className="border-b border-gray-100 pb-5">
-            <h2 className="text-xl font-extrabold text-gray-900 flex items-center gap-2">
-              <KeyRound className="w-6 h-6 text-emerald-600" />
-              Passwordless Authentication Status
-            </h2>
-            <p className="text-xs text-gray-500 mt-1">
-              Active session details, cryptographic verification method, and account controls.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="p-5 bg-gray-50 rounded-2xl border border-gray-100 space-y-3">
-              <span className="text-xs font-bold text-gray-500 uppercase tracking-wider block">
-                User Account
-              </span>
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold">
-                  <UserCheck className="w-5 h-5" />
-                </div>
-                <div>
-                  <div className="font-extrabold text-gray-900 text-sm">{user?.email}</div>
-                  <div className="text-[11px] text-emerald-600 font-bold flex items-center gap-1">
-                    <CheckCircle2 className="w-3.5 h-3.5" /> Verified Account
-                  </div>
-                </div>
-              </div>
-              <div className="pt-2 text-xs text-gray-500 border-t border-gray-200/60">
-                User ID: #{user?.id} • Active Session
-              </div>
-            </div>
-
-            <div className="p-5 bg-gray-50 rounded-2xl border border-gray-100 space-y-3">
-              <span className="text-xs font-bold text-gray-500 uppercase tracking-wider block">
-                Security Architecture
-              </span>
-              <ul className="text-xs text-gray-600 space-y-1.5 leading-relaxed">
-                <li>• <strong>Cryptographic 6-Digit OTP:</strong> Single-use code with 5-minute expiry.</li>
-                <li>• <strong>Passwordless Security:</strong> No password storage eliminates credential stuffing.</li>
-                <li>• <strong>Keyed HMAC Hashing:</strong> OTP codes are never stored in plaintext on disk.</li>
-              </ul>
-            </div>
-          </div>
-
-          <div className="pt-2 flex items-center justify-between border-t border-gray-100">
-            <span className="text-xs text-gray-500">Need to switch accounts or end your session?</span>
-            <button
-              onClick={logout}
-              className="px-4 py-2 bg-red-50 hover:bg-red-100 text-red-600 font-bold text-xs rounded-xl transition-colors flex items-center gap-1.5 cursor-pointer"
-            >
-              <LogOut className="w-4 h-4" />
-              <span>Log Out</span>
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
