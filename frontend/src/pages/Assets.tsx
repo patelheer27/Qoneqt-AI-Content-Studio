@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   Upload, Trash2, ArrowUp, ArrowDown, Play, Download, Sparkles, 
-  RefreshCw, Film, Volume2, Music, Type, Sliders, CheckCircle2, 
-  AlertCircle, X, Eye, Video, Wand2, Compass, Move, ChevronRight, 
-  Check, Plus, RotateCcw, ExternalLink 
+  RefreshCw, Film, Volume2, Type, CheckCircle2, 
+  AlertCircle, X, Compass, Move, ExternalLink, Plus, RotateCcw,
+  Check, User
 } from 'lucide-react';
 import { imageToVideoApi } from '../services/api';
 
@@ -23,21 +23,6 @@ interface SceneItem {
   ai_intensity: 'low' | 'medium' | 'high';
   transition: string;
   transition_duration: number;
-}
-
-interface VoiceOption {
-  id: string;
-  name: string;
-  gender: string;
-  lang: string;
-}
-
-interface MusicOption {
-  id: string;
-  name: string;
-  category: string;
-  duration: number;
-  url: string;
 }
 
 interface GenerationJob {
@@ -82,6 +67,35 @@ const TRANSITIONS = [
   { id: 'blur', label: 'Blur Transition' },
 ];
 
+const SUBTITLE_COLOR_PRESETS = [
+  { label: 'White', color: '#FFFFFF' },
+  { label: 'Yellow', color: '#FACC15' },
+  { label: 'Cyan', color: '#22D3EE' },
+  { label: 'Amber', color: '#F59E0B' },
+];
+
+export const SUBTITLE_FONTS = [
+  { id: 'Inter', label: 'Inter Clean', family: '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif', weight: 600, letterSpacing: 'normal' },
+  { id: 'Arial', label: 'Arial Bold', family: 'Arial, "Helvetica Neue", Helvetica, sans-serif', weight: 700, letterSpacing: 'normal' },
+  { id: 'Georgia', label: 'Georgia Cinematic', family: 'Georgia, "Times New Roman", Cambria, serif', weight: 700, letterSpacing: 'normal' },
+  { id: 'Impact', label: 'Impact Bold', family: 'Impact, "Arial Black", "Trebuchet MS", sans-serif', weight: 900, letterSpacing: '0.04em' },
+];
+
+export const getSubtitleFontFamily = (fontId: string) => {
+  const match = SUBTITLE_FONTS.find(f => f.id.toLowerCase() === (fontId || '').toLowerCase());
+  return match ? match.family : '"Inter", system-ui, -apple-system, sans-serif';
+};
+
+export const getSubtitleFontWeight = (fontId: string) => {
+  const match = SUBTITLE_FONTS.find(f => f.id.toLowerCase() === (fontId || '').toLowerCase());
+  return match ? match.weight : 600;
+};
+
+export const getSubtitleLetterSpacing = (fontId: string) => {
+  const match = SUBTITLE_FONTS.find(f => f.id.toLowerCase() === (fontId || '').toLowerCase());
+  return match ? match.letterSpacing : 'normal';
+};
+
 export const resolveMediaUrl = (url?: string | null): string => {
   if (!url) return '';
   if (url.startsWith('http://') || url.startsWith('https://')) return url;
@@ -100,20 +114,12 @@ export default function Assets() {
   const [aspectRatio, setAspectRatio] = useState<'16:9' | '9:16' | '1:1'>('16:9');
   const [resolution, setResolution] = useState<'720p' | '1080p'>('1080p');
   
-  // Audio state
-  const [voiceList, setVoiceList] = useState<VoiceOption[]>([]);
-  const [musicList, setMusicList] = useState<MusicOption[]>([]);
+  // Voice Narration state: Two options only (Female & Male) + Custom Audio upload
   const [voiceEnabled, setVoiceEnabled] = useState(true);
-  const [selectedVoice, setSelectedVoice] = useState('en-US-GuyNeural');
+  const [selectedVoice, setSelectedVoice] = useState<'en-US-JennyNeural' | 'en-US-GuyNeural'>('en-US-JennyNeural');
   const [customAudioUrl, setCustomAudioUrl] = useState<string | null>(null);
   const [customAudioPath, setCustomAudioPath] = useState<string | null>(null);
   const [narrationVolume, setNarrationVolume] = useState(1.0);
-
-  // Music state
-  const [musicEnabled, setMusicEnabled] = useState(true);
-  const [selectedMusic, setSelectedMusic] = useState('ambient');
-  const [customMusicUrl, setCustomMusicUrl] = useState<string | null>(null);
-  const [musicVolume, setMusicVolume] = useState(0.2);
 
   // Subtitle state
   const [subtitleEnabled, setSubtitleEnabled] = useState(true);
@@ -140,33 +146,17 @@ export default function Assets() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const audioInputRef = useRef<HTMLInputElement>(null);
 
-  // Load voices, music, and recent projects on mount
+  // Load recent projects on mount
   useEffect(() => {
-    loadMetadata();
     loadRecentProjects();
   }, []);
-
-  const loadMetadata = async () => {
-    try {
-      const [voices, music] = await Promise.all([
-        imageToVideoApi.getVoices(),
-        imageToVideoApi.getMusicTracks(),
-      ]);
-      setVoiceList(voices || []);
-      setMusicList(music || []);
-      if (voices && voices.length > 0) setSelectedVoice(voices[0].id);
-      if (music && music.length > 0) setSelectedMusic(music[0].id);
-    } catch (err) {
-      console.warn('Failed to fetch voice/music lists:', err);
-    }
-  };
 
   const loadRecentProjects = async () => {
     try {
       const projects = await imageToVideoApi.getRecentProjects();
       setRecentProjects(projects || []);
 
-      // If user hasn't generated a video in this immediate session, automatically display the most recent completed video!
+      // Automatically display the most recent completed video if idle
       if (projects && projects.length > 0) {
         const latest = projects[0];
         if (latest.video_url && (latest.status || '').toLowerCase() === 'completed') {
@@ -190,7 +180,7 @@ export default function Assets() {
     }
   };
 
-  // Drag and drop handlers
+  // Drag and drop handlers (JPG, JPEG, PNG, WEBP, and JFIF)
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
@@ -200,14 +190,14 @@ export default function Assets() {
 
   const handleFilesUpload = async (files: File[]) => {
     setUploadError(null);
-    const validExtensions = ['jpg', 'jpeg', 'png', 'webp'];
+    const validExtensions = ['jpg', 'jpeg', 'png', 'webp', 'jfif'];
     const validFiles = files.filter(f => {
       const ext = f.name.split('.').pop()?.toLowerCase() || '';
       return validExtensions.includes(ext);
     });
 
     if (validFiles.length === 0) {
-      setUploadError('Please select valid image files (JPG, PNG, or WEBP).');
+      setUploadError('Please select valid image files (JPG, JPEG, PNG, WEBP, or JFIF).');
       return;
     }
 
@@ -303,7 +293,7 @@ export default function Assets() {
     setShowBulkScriptModal(false);
   };
 
-  // Preview individual scene
+  // Preview individual scene with subtitles and selected voice
   const handlePreviewScene = async (scene: SceneItem) => {
     setPreviewingScene(scene);
     setScenePreviewUrl(null);
@@ -319,6 +309,14 @@ export default function Assets() {
         duration: scene.duration,
         aspect_ratio: aspectRatio,
         text: scene.text,
+        voice_id: selectedVoice,
+        voice_enabled: voiceEnabled,
+        subtitles_enabled: subtitleEnabled,
+        subtitle_font: subtitleFont,
+        subtitle_size: subtitleFontSize,
+        subtitle_color: subtitleColor,
+        subtitle_bg: subtitleBg,
+        subtitle_position: subtitlePosition,
       });
 
       const pUrl = res?.preview_url || res?.preview_video_url;
@@ -333,7 +331,7 @@ export default function Assets() {
     }
   };
 
-  // Full Video Generation
+  // Full Video Generation (No background music)
   const handleGenerateVideo = async () => {
     if (scenes.length === 0) {
       alert('Please upload at least one image before generating a video.');
@@ -374,11 +372,9 @@ export default function Assets() {
           custom_audio_url: customAudioUrl,
           custom_audio_path: customAudioPath,
           narration_volume: narrationVolume,
-          music_enabled: musicEnabled,
-          music_id: selectedMusic,
-          custom_music_url: customMusicUrl,
-          music_volume: musicVolume,
+          music_enabled: false,
           subtitle_enabled: subtitleEnabled,
+          subtitles_enabled: subtitleEnabled,
           subtitle_font: subtitleFont,
           subtitle_size: subtitleFontSize,
           subtitle_color: subtitleColor,
@@ -586,7 +582,7 @@ export default function Assets() {
             </div>
             <h3 className="text-2xl font-black text-gray-900">Your Video is Ready!</h3>
             <p className="text-xs text-gray-600 leading-relaxed">
-              Synthesized voiceover, camera & AI motion effects, synchronized subtitles, and audio mixing have been combined into a high-definition MP4.
+              Synthesized voiceover, camera & AI motion effects, synchronized subtitles, and transitions have been combined into a high-definition MP4.
             </p>
             <div className="flex flex-wrap items-center gap-3 pt-2">
               <a
@@ -624,7 +620,7 @@ export default function Assets() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left Column: Image Upload & Scenes Timeline (2 cols) */}
         <div className="lg:col-span-2 space-y-6">
-          {/* Upload Zone */}
+          {/* Upload Zone (JPG, JPEG, PNG, WEBP, and JFIF) */}
           <div
             onDragOver={e => e.preventDefault()}
             onDrop={handleDrop}
@@ -645,14 +641,14 @@ export default function Assets() {
                 </button>
               </h4>
               <p className="text-xs text-gray-500 mt-1">
-                Supports JPG, JPEG, PNG, WEBP. Upload multiple images to create a multi-scene video.
+                Supports JPG, JPEG, PNG, WEBP, and JFIF. Upload multiple images to create a multi-scene video.
               </p>
             </div>
             <input
               ref={fileInputRef}
               type="file"
               multiple
-              accept="image/jpeg,image/png,image/webp"
+              accept="image/jpeg,image/png,image/webp,image/jfif,.jfif,.jpg,.jpeg,.png,.webp"
               className="hidden"
               onChange={e => {
                 if (e.target.files && e.target.files.length > 0) {
@@ -705,7 +701,7 @@ export default function Assets() {
                 <Film className="w-12 h-12 mx-auto mb-3 text-gray-300" />
                 <h4 className="text-base font-bold text-gray-700">No scenes created yet</h4>
                 <p className="text-xs text-gray-500 mt-1 max-w-sm mx-auto">
-                  Upload one or more images above. Each image becomes an animated scene with its own voice narration, dynamic motion, and transitions.
+                  Upload one or more images above (JPG, PNG, WEBP, or JFIF). Each image becomes an animated scene with voice narration and synchronized subtitles.
                 </p>
               </div>
             ) : (
@@ -813,7 +809,7 @@ export default function Assets() {
                                 {scene.motion_type === 'camera' ? (
                                   <Compass className="w-3.5 h-3.5 text-blue-600" />
                                 ) : (
-                                  <Wand2 className="w-3.5 h-3.5 text-orange-500" />
+                                  <Sparkles className="w-3.5 h-3.5 text-orange-500" />
                                 )}
                                 Motion Effect
                               </span>
@@ -937,9 +933,9 @@ export default function Assets() {
           </div>
         </div>
 
-        {/* Right Column: Audio, Subtitles & Customization (1 col) */}
+        {/* Right Column: Audio & Subtitles Customization (1 col) */}
         <div className="space-y-6">
-          {/* Card: Voiceover Narration */}
+          {/* Card: Voiceover Narration (Female & Male Only) */}
           <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm space-y-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -948,7 +944,7 @@ export default function Assets() {
                 </div>
                 <div>
                   <h4 className="text-sm font-bold text-gray-900">Voice Narration</h4>
-                  <p className="text-[11px] text-gray-400">TTS or uploaded audio</p>
+                  <p className="text-[11px] text-gray-400">Female, Male or custom audio</p>
                 </div>
               </div>
               <label className="relative inline-flex items-center cursor-pointer">
@@ -963,28 +959,60 @@ export default function Assets() {
             </div>
 
             {voiceEnabled && (
-              <div className="space-y-3 pt-2 border-t border-gray-100">
+              <div className="space-y-4 pt-2 border-t border-gray-100">
                 <div>
-                  <label className="block text-xs font-bold text-gray-700 mb-1">
-                    Select Voice Actor
+                  <label className="block text-xs font-bold text-gray-700 mb-2">
+                    Select Voice Narration Style
                   </label>
-                  <select
-                    value={selectedVoice}
-                    onChange={(e) => setSelectedVoice(e.target.value)}
-                    className="w-full text-xs font-semibold bg-gray-50 border border-gray-200 rounded-xl p-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    {voiceList.map(v => (
-                      <option key={v.id} value={v.id}>
-                        {v.name} ({v.gender} • {v.lang})
-                      </option>
-                    ))}
-                  </select>
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedVoice('en-US-JennyNeural')}
+                      className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col gap-1 ${
+                        selectedVoice === 'en-US-JennyNeural'
+                          ? 'border-pink-500 bg-pink-50/60 ring-2 ring-pink-100 shadow-xs'
+                          : 'border-gray-200 bg-gray-50/70 hover:bg-gray-100'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-black text-gray-900 flex items-center gap-1.5">
+                          <span className="w-2.5 h-2.5 rounded-full bg-pink-500 inline-block"></span>
+                          Female Voice
+                        </span>
+                        {selectedVoice === 'en-US-JennyNeural' && (
+                          <Check className="w-3.5 h-3.5 text-pink-600" />
+                        )}
+                      </div>
+                      <span className="text-[10px] text-gray-500 font-semibold">Jenny • Warm & Natural</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setSelectedVoice('en-US-GuyNeural')}
+                      className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col gap-1 ${
+                        selectedVoice === 'en-US-GuyNeural'
+                          ? 'border-blue-500 bg-blue-50/60 ring-2 ring-blue-100 shadow-xs'
+                          : 'border-gray-200 bg-gray-50/70 hover:bg-gray-100'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-black text-gray-900 flex items-center gap-1.5">
+                          <span className="w-2.5 h-2.5 rounded-full bg-blue-500 inline-block"></span>
+                          Male Voice
+                        </span>
+                        {selectedVoice === 'en-US-GuyNeural' && (
+                          <Check className="w-3.5 h-3.5 text-blue-600" />
+                        )}
+                      </div>
+                      <span className="text-[10px] text-gray-500 font-semibold">Guy • Confident & Clear</span>
+                    </button>
+                  </div>
                 </div>
 
                 <div>
                   <div className="flex items-center justify-between text-xs font-bold text-gray-700 mb-1">
                     <span>Voice Volume</span>
-                    <span className="text-blue-600">{Math.round(narrationVolume * 100)}%</span>
+                    <span className="text-blue-600 font-black">{Math.round(narrationVolume * 100)}%</span>
                   </div>
                   <input
                     type="range"
@@ -1022,70 +1050,6 @@ export default function Assets() {
             )}
           </div>
 
-          {/* Card: Background Music */}
-          <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-orange-50 text-orange-600 flex items-center justify-center">
-                  <Music className="w-4 h-4" />
-                </div>
-                <div>
-                  <h4 className="text-sm font-bold text-gray-900">Background Music</h4>
-                  <p className="text-[11px] text-gray-400">Atmospheric soundtrack</p>
-                </div>
-              </div>
-              <label className="relative inline-flex items-center cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={musicEnabled}
-                  onChange={(e) => setMusicEnabled(e.target.checked)}
-                  className="sr-only peer"
-                />
-                <div className="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-orange-500"></div>
-              </label>
-            </div>
-
-            {musicEnabled && (
-              <div className="space-y-3 pt-2 border-t border-gray-100">
-                <div>
-                  <label className="block text-xs font-bold text-gray-700 mb-1">
-                    Select Track
-                  </label>
-                  <select
-                    value={selectedMusic}
-                    onChange={(e) => setSelectedMusic(e.target.value)}
-                    className="w-full text-xs font-semibold bg-gray-50 border border-gray-200 rounded-xl p-2.5 focus:outline-none focus:ring-2 focus:ring-orange-500"
-                  >
-                    {musicList.map(m => (
-                      <option key={m.id} value={m.id}>
-                        {m.name} ({m.category})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <div className="flex items-center justify-between text-xs font-bold text-gray-700 mb-1">
-                    <span>Music Volume</span>
-                    <span className="text-orange-600">{Math.round(musicVolume * 100)}%</span>
-                  </div>
-                  <input
-                    type="range"
-                    min="0"
-                    max="1.0"
-                    step="0.05"
-                    value={musicVolume}
-                    onChange={(e) => setMusicVolume(parseFloat(e.target.value))}
-                    className="w-full accent-orange-500 cursor-pointer"
-                  />
-                  <p className="text-[10px] text-gray-400 mt-1">
-                    * Automatically ducked during voice narration to preserve vocal clarity.
-                  </p>
-                </div>
-              </div>
-            )}
-          </div>
-
           {/* Card: Subtitle & Typography Customization */}
           <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm space-y-4">
             <div className="flex items-center justify-between">
@@ -1110,19 +1074,28 @@ export default function Assets() {
             </div>
 
             {subtitleEnabled && (
-              <div className="space-y-3 pt-2 border-t border-gray-100">
+              <div className="space-y-3.5 pt-2 border-t border-gray-100">
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-bold text-gray-700 mb-1">Font Family</label>
                     <select
                       value={subtitleFont}
                       onChange={(e) => setSubtitleFont(e.target.value)}
-                      className="w-full text-xs font-semibold bg-gray-50 border border-gray-200 rounded-lg p-2 focus:outline-none"
+                      style={{
+                        fontFamily: getSubtitleFontFamily(subtitleFont),
+                        fontWeight: getSubtitleFontWeight(subtitleFont),
+                      }}
+                      className="w-full text-xs font-semibold bg-gray-50 border border-gray-200 rounded-lg p-2 focus:outline-none focus:ring-1 focus:ring-purple-500 cursor-pointer"
                     >
-                      <option value="Inter">Inter Clean</option>
-                      <option value="Sans">Standard Sans</option>
-                      <option value="Serif">Cinematic Serif</option>
-                      <option value="Monospace">Modern Monospace</option>
+                      {SUBTITLE_FONTS.map(f => (
+                        <option
+                          key={f.id}
+                          value={f.id}
+                          style={{ fontFamily: f.family, fontWeight: f.weight }}
+                        >
+                          {f.label}
+                        </option>
+                      ))}
                     </select>
                   </div>
 
@@ -1131,78 +1104,167 @@ export default function Assets() {
                     <select
                       value={subtitleFontSize}
                       onChange={(e) => setSubtitleFontSize(e.target.value as any)}
-                      className="w-full text-xs font-semibold bg-gray-50 border border-gray-200 rounded-lg p-2 focus:outline-none"
+                      className="w-full text-xs font-semibold bg-gray-50 border border-gray-200 rounded-lg p-2 focus:outline-none focus:ring-1 focus:ring-purple-500 cursor-pointer"
                     >
                       <option value="small">Small (28pt)</option>
-                      <option value="medium">Medium (38pt)</option>
-                      <option value="large">Large (50pt)</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-bold text-gray-700 mb-1">Text Color</label>
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="color"
-                        value={subtitleColor}
-                        onChange={(e) => setSubtitleColor(e.target.value)}
-                        className="w-8 h-8 rounded border border-gray-200 cursor-pointer"
-                      />
-                      <span className="text-xs font-mono text-gray-600">{subtitleColor}</span>
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold text-gray-700 mb-1">Position</label>
-                    <select
-                      value={subtitlePosition}
-                      onChange={(e) => setSubtitlePosition(e.target.value as any)}
-                      className="w-full text-xs font-semibold bg-gray-50 border border-gray-200 rounded-lg p-2 focus:outline-none"
-                    >
-                      <option value="bottom">Bottom Overlay</option>
-                      <option value="center">Center Focus</option>
-                      <option value="top">Top Header</option>
+                      <option value="medium">Medium (36pt)</option>
+                      <option value="large">Large (48pt)</option>
                     </select>
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-gray-700 mb-1">Background Capsule</label>
-                  <div className="flex bg-gray-100 p-1 rounded-lg">
-                    {(['translucent', 'solid', 'none'] as const).map(bg => (
+                  <label className="block text-xs font-bold text-gray-700 mb-1">Text Color</label>
+                  <div className="flex items-center gap-2">
+                    {SUBTITLE_COLOR_PRESETS.map(p => (
                       <button
-                        key={bg}
+                        key={p.color}
                         type="button"
-                        onClick={() => setSubtitleBg(bg)}
-                        className={`flex-1 py-1 rounded text-xs font-bold capitalize transition-all cursor-pointer ${
-                          subtitleBg === bg ? 'bg-white text-purple-700 shadow-sm' : 'text-gray-500'
+                        onClick={() => setSubtitleColor(p.color)}
+                        className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold border transition-all cursor-pointer ${
+                          subtitleColor.toUpperCase() === p.color.toUpperCase()
+                            ? 'border-purple-600 bg-purple-50 text-purple-700 ring-1 ring-purple-400'
+                            : 'border-gray-200 bg-gray-50 text-gray-700 hover:bg-gray-100'
                         }`}
                       >
-                        {bg}
+                        <span className="w-2.5 h-2.5 rounded-full border border-black/20" style={{ backgroundColor: p.color }}></span>
+                        {p.label}
                       </button>
                     ))}
+                    <input
+                      type="color"
+                      value={subtitleColor}
+                      onChange={(e) => setSubtitleColor(e.target.value)}
+                      title="Custom Color"
+                      className="w-7 h-7 rounded border border-gray-200 cursor-pointer shrink-0"
+                    />
                   </div>
                 </div>
 
-                {/* Subtitle Live Preview Pill */}
-                <div className="mt-2 p-3 bg-gray-900 rounded-xl text-center">
-                  <span
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-1">Position</label>
+                    <select
+                      value={subtitlePosition}
+                      onChange={(e) => setSubtitlePosition(e.target.value as any)}
+                      className="w-full text-xs font-semibold bg-gray-50 border border-gray-200 rounded-lg p-2 focus:outline-none focus:ring-1 focus:ring-purple-500 cursor-pointer"
+                    >
+                      <option value="bottom">Bottom Overlay</option>
+                      <option value="center">Center Focus</option>
+                      <option value="top">Top Header</option>
+                    </select>
+
+                    {/* Quick position toggle pills */}
+                    <div className="grid grid-cols-3 gap-1 mt-1.5">
+                      {(['top', 'center', 'bottom'] as const).map(pos => (
+                        <button
+                          key={pos}
+                          type="button"
+                          onClick={() => setSubtitlePosition(pos)}
+                          className={`py-1 text-[11px] font-bold rounded-md border transition-all cursor-pointer capitalize text-center ${
+                            subtitlePosition === pos
+                              ? 'bg-purple-600 text-white border-purple-600 shadow-xs'
+                              : 'bg-gray-100 text-gray-600 border-gray-200 hover:bg-gray-200'
+                          }`}
+                        >
+                          {pos === 'top' ? 'Top' : pos === 'center' ? 'Center' : 'Bottom'}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-1">Background Capsule</label>
+                    <select
+                      value={subtitleBg}
+                      onChange={(e) => setSubtitleBg(e.target.value as any)}
+                      className="w-full text-xs font-semibold bg-gray-50 border border-gray-200 rounded-lg p-2 focus:outline-none focus:ring-1 focus:ring-purple-500 cursor-pointer"
+                    >
+                      <option value="translucent">Translucent Pill</option>
+                      <option value="solid">Solid Dark Box</option>
+                      <option value="none">No Box (Shadow Only)</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Subtitle Live Canvas Screen Preview */}
+                <div className="mt-3 space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-gray-600 uppercase tracking-wider flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-purple-500 animate-pulse"></span>
+                      Sample Screen Preview
+                    </span>
+                    <span className="text-[10px] font-mono text-purple-700 bg-purple-50 border border-purple-100 px-2 py-0.5 rounded-full font-semibold">
+                      {subtitleFont} • {subtitlePosition.toUpperCase()}
+                    </span>
+                  </div>
+
+                  {/* Mock Video Canvas Frame */}
+                  <div 
+                    className="relative w-full h-44 rounded-xl border border-neutral-800 bg-neutral-950 overflow-hidden flex flex-col justify-between p-3 select-none shadow-inner transition-all duration-300"
                     style={{
-                      color: subtitleColor,
-                      fontSize: subtitleFontSize === 'small' ? '12px' : subtitleFontSize === 'large' ? '16px' : '14px',
+                      backgroundImage: 'radial-gradient(ellipse at 50% 50%, rgba(30, 41, 59, 0.5) 0%, rgba(10, 10, 15, 0.98) 100%)',
                     }}
-                    className={`inline-block px-3 py-1 rounded-md font-bold ${
-                      subtitleBg === 'translucent'
-                        ? 'bg-black/60 backdrop-blur-sm'
-                        : subtitleBg === 'solid'
-                        ? 'bg-black'
-                        : ''
-                    }`}
                   >
-                    Sample Synchronized Subtitle Preview
-                  </span>
+                    {/* Subtle cinematic backdrop glow */}
+                    <div className="absolute inset-0 pointer-events-none opacity-20 flex items-center justify-center">
+                      <div className="w-full h-full bg-gradient-to-tr from-blue-900/40 via-transparent to-purple-900/30"></div>
+                    </div>
+
+                    {/* Canvas Header Bar */}
+                    <div className="flex items-center justify-between text-[10px] text-neutral-400 z-10 pointer-events-none">
+                      <span className="bg-black/50 backdrop-blur-xs px-2 py-0.5 rounded text-[10px] border border-white/10 text-neutral-300 flex items-center gap-1.5 font-medium">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                        Video Canvas ({aspectRatio})
+                      </span>
+                      <span className="bg-black/50 backdrop-blur-xs px-2 py-0.5 rounded text-[10px] border border-white/10 text-neutral-300 font-mono">
+                        Font: <span className="text-purple-300 font-bold">{subtitleFont}</span>
+                      </span>
+                    </div>
+
+                    {/* Subtitle Positioning Container: accurately placed at Top, Center, or Bottom */}
+                    <div
+                      className={`w-full flex justify-center transition-all duration-300 ease-out z-10 ${
+                        subtitlePosition === 'top'
+                          ? 'mt-1 mb-auto'
+                          : subtitlePosition === 'center'
+                          ? 'my-auto'
+                          : 'mt-auto mb-1'
+                      }`}
+                    >
+                      <span
+                        style={{
+                          fontFamily: getSubtitleFontFamily(subtitleFont),
+                          fontWeight: getSubtitleFontWeight(subtitleFont),
+                          letterSpacing: getSubtitleLetterSpacing(subtitleFont),
+                          color: subtitleColor,
+                          fontSize: subtitleFontSize === 'small' ? '12px' : subtitleFontSize === 'large' ? '16px' : '14px',
+                          textShadow: subtitleBg === 'none'
+                            ? '0px 2px 4px rgba(0,0,0,0.95), 0px 0px 8px rgba(0,0,0,0.85)'
+                            : '0px 1px 2px rgba(0,0,0,0.6)',
+                        }}
+                        className={`inline-block px-3.5 py-1.5 rounded-lg text-center max-w-[92%] transition-all duration-200 ${
+                          subtitleBg === 'translucent'
+                            ? 'bg-black/70 backdrop-blur-md border border-white/20 shadow-lg'
+                            : subtitleBg === 'solid'
+                            ? 'bg-neutral-950 border border-white/30 shadow-xl'
+                            : ''
+                        }`}
+                      >
+                        Sample Synchronized Subtitle Preview
+                      </span>
+                    </div>
+
+                    {/* Canvas Footer Bar */}
+                    <div className="flex items-center justify-between text-[10px] text-neutral-400 z-10 pointer-events-none">
+                      <span className="text-[10px] text-neutral-400 font-mono">
+                        Size: <span className="text-white font-medium">{subtitleFontSize.toUpperCase()}</span>
+                      </span>
+                      <span className="text-[10px] text-neutral-400 font-mono">
+                        Position: <span className="text-purple-300 font-bold capitalize">{subtitlePosition}</span>
+                      </span>
+                    </div>
+                  </div>
                 </div>
               </div>
             )}
@@ -1337,7 +1399,7 @@ export default function Assets() {
               </button>
             </div>
 
-            <div className="w-full bg-black rounded-xl overflow-hidden aspect-video flex items-center justify-center">
+            <div className="w-full bg-black rounded-xl overflow-hidden aspect-video flex items-center justify-center relative">
               {isPreviewLoading ? (
                 <div className="flex flex-col items-center gap-2 text-white text-xs font-bold">
                   <RefreshCw className="w-6 h-6 animate-spin text-blue-400" />
@@ -1358,6 +1420,41 @@ export default function Assets() {
                   alt="Scene"
                   className="w-full h-full object-cover"
                 />
+              )}
+
+              {/* Subtitle Overlay in Scene Preview */}
+              {subtitleEnabled && previewingScene.text && !isPreviewLoading && (
+                <div
+                  className={`absolute inset-x-0 px-4 pointer-events-none flex justify-center z-10 transition-all ${
+                    subtitlePosition === 'top'
+                      ? 'top-4'
+                      : subtitlePosition === 'center'
+                      ? 'top-1/2 -translate-y-1/2'
+                      : 'bottom-4'
+                  }`}
+                >
+                  <span
+                    style={{
+                      fontFamily: getSubtitleFontFamily(subtitleFont),
+                      fontWeight: getSubtitleFontWeight(subtitleFont),
+                      letterSpacing: getSubtitleLetterSpacing(subtitleFont),
+                      color: subtitleColor,
+                      fontSize: subtitleFontSize === 'small' ? '12px' : subtitleFontSize === 'large' ? '16px' : '14px',
+                      textShadow: subtitleBg === 'none'
+                        ? '0px 2px 4px rgba(0,0,0,0.95), 0px 0px 8px rgba(0,0,0,0.85)'
+                        : '0px 1px 2px rgba(0,0,0,0.6)',
+                    }}
+                    className={`inline-block px-3 py-1.5 rounded-lg text-center max-w-[90%] shadow-lg ${
+                      subtitleBg === 'translucent'
+                        ? 'bg-black/70 backdrop-blur-md border border-white/20'
+                        : subtitleBg === 'solid'
+                        ? 'bg-neutral-950 border border-white/30'
+                        : ''
+                    }`}
+                  >
+                    {previewingScene.text}
+                  </span>
+                </div>
               )}
             </div>
 

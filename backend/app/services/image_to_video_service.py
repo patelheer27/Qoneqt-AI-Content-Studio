@@ -71,26 +71,47 @@ class ImageToVideoService:
             return (720, 1280) if is_720 else (1080, 1920)
 
     def save_uploaded_image(self, file_content: bytes, filename: str) -> Dict[str, Any]:
-        """Validates and saves an uploaded image, extracting format, dimensions and file size."""
+        """Validates and saves an uploaded image (JPG, JPEG, PNG, WEBP, JFIF)."""
         ext = os.path.splitext(filename)[1].lower()
-        if ext not in [".jpg", ".jpeg", ".png", ".webp"]:
-            raise ValueError(f"Unsupported image format '{ext}'. Supported formats: JPG, JPEG, PNG, WEBP.")
+        if ext not in [".jpg", ".jpeg", ".png", ".webp", ".jfif"]:
+            raise ValueError(f"Unsupported image format '{ext}'. Supported formats: JPG, JPEG, PNG, WEBP, JFIF.")
             
         unique_id = uuid.uuid4().hex[:12]
-        safe_filename = f"{unique_id}_{re.sub(r'[^a-zA-Z0-9_.-]', '', filename)}"
+        base_name = os.path.splitext(re.sub(r'[^a-zA-Z0-9_.-]', '', filename))[0]
+        # For JFIF files, convert and save as .jpg for maximum cross-browser and FFmpeg compatibility
+        target_ext = ".jpg" if ext == ".jfif" else ext
+        safe_filename = f"{unique_id}_{base_name}{target_ext}"
         file_path = os.path.join(self.uploads_dir, safe_filename)
         
-        with open(file_path, "wb") as f:
+        # Save temp file first to inspect and convert safely
+        temp_path = os.path.join(self.uploads_dir, f"temp_{unique_id}_{filename}")
+        with open(temp_path, "wb") as f:
             f.write(file_content)
             
         try:
-            with Image.open(file_path) as img:
+            with Image.open(temp_path) as img:
+                # Normalize EXIF orientation if needed
+                img = ImageOps.exif_transpose(img) or img
                 w, h = img.size
-                img_format = img.format or ext.replace(".", "").upper()
+                img_format = img.format or "JPEG"
+                if ext == ".jfif":
+                    # Convert to RGB and save as standard high-quality JPEG
+                    rgb_img = img.convert("RGB")
+                    rgb_img.save(file_path, "JPEG", quality=95)
+                else:
+                    shutil.move(temp_path, file_path)
         except Exception as e:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
             if os.path.exists(file_path):
                 os.remove(file_path)
             raise ValueError(f"Corrupt or invalid image file: {e}")
+        finally:
+            if os.path.exists(temp_path):
+                try:
+                    os.remove(temp_path)
+                except Exception:
+                    pass
 
         file_size = os.path.getsize(file_path)
         url = f"/storage/assets/uploads/{safe_filename}"
@@ -104,7 +125,7 @@ class ImageToVideoService:
             "width": w,
             "height": h,
             "file_size": file_size,
-            "format": img_format
+            "format": "JPEG" if ext == ".jfif" else img_format
         }
 
     def save_uploaded_audio(self, file_content: bytes, filename: str) -> Dict[str, Any]:
@@ -170,6 +191,26 @@ class ImageToVideoService:
                     continue
         return ImageFont.load_default()
 
+    def _parse_font_size(self, size_val: Any, height: int = 1080) -> int:
+        """Parses font size cleanly from numbers or strings and scales appropriately."""
+        scale = max(0.65, min(1.8, height / 1080.0))
+        if isinstance(size_val, (int, float)):
+            return max(18, int(size_val * scale))
+        
+        s = str(size_val).lower().strip()
+        if "small" in s:
+            base = 28
+        elif "large" in s:
+            base = 46
+        else: # medium or default
+            base = 36
+            
+        try:
+            num = int(re.sub(r'[^0-9]', '', s))
+            return max(18, int(num * scale))
+        except Exception:
+            return max(18, int(base * scale))
+
     def create_subtitle_overlay_image(
         self,
         headline: str,
@@ -177,9 +218,9 @@ class ImageToVideoService:
         width: int,
         height: int,
         font_name: str = "Inter",
-        font_size: int = 32,
+        font_size: Any = 36,
         font_color: str = "#FFFFFF",
-        bg_style: str = "box",
+        bg_style: str = "translucent",
         position: str = "bottom",
         aspect_ratio: str = "9:16"
     ) -> Optional[str]:
@@ -187,13 +228,14 @@ class ImageToVideoService:
         if not headline and not text:
             return None
 
+        actual_font_size = self._parse_font_size(font_size, height)
         overlay = Image.new("RGBA", (width, height), (0, 0, 0, 0))
         draw = ImageDraw.Draw(overlay)
         
         # 1. Headline (Upper Badge)
         if headline and headline.strip():
             h_text = headline.strip()
-            h_size = max(24, int(font_size * 0.95))
+            h_size = max(22, int(actual_font_size * 0.9))
             h_font = self._get_font(font_name, h_size)
             h_bbox = draw.textbbox((0, 0), h_text, font=h_font)
             h_w = h_bbox[2] - h_bbox[0]
@@ -218,10 +260,10 @@ class ImageToVideoService:
         # 2. Subtitle (Narration Text)
         if text and text.strip():
             s_text = text.strip()
-            s_font = self._get_font(font_name, font_size)
+            s_font = self._get_font(font_name, actual_font_size)
             
-            # Word wrap into max 3 lines
-            max_w = int(width * 0.85)
+            # Word wrap into max 4 lines
+            max_w = int(width * 0.86)
             words = s_text.split()
             lines = []
             curr_line = []
@@ -240,7 +282,7 @@ class ImageToVideoService:
             if curr_line:
                 lines.append(" ".join(curr_line))
                 
-            lines = lines[:3]
+            lines = lines[:4]
             line_dims = [draw.textbbox((0, 0), l, font=s_font) for l in lines]
             line_widths = [d[2] - d[0] for d in line_dims]
             line_heights = [d[3] - d[1] for d in line_dims]
@@ -254,34 +296,52 @@ class ImageToVideoService:
             
             # Determine Y position
             if position == "top":
-                box_y = int(height * 0.18)
+                box_y = int(height * 0.12)
             elif position == "center":
                 box_y = (height - box_h) / 2
             else: # bottom
-                box_y = int(height * 0.74) if aspect_ratio == "16:9" else int(height * 0.76)
+                box_y = int(height * 0.78) if aspect_ratio == "16:9" else int(height * 0.80)
                 
             # Parse color
             text_rgb = (255, 255, 255)
-            if font_color.startswith("#") and len(font_color) == 7:
-                try:
-                    text_rgb = tuple(int(font_color[i:i+2], 16) for i in (1, 3, 5))
-                except Exception:
-                    text_rgb = (255, 255, 255)
+            if font_color.startswith("#"):
+                hex_str = font_color.lstrip("#")
+                if len(hex_str) == 6:
+                    try:
+                        text_rgb = tuple(int(hex_str[i:i+2], 16) for i in (0, 2, 4))
+                    except Exception:
+                        text_rgb = (255, 255, 255)
+                elif len(hex_str) == 3:
+                    try:
+                        text_rgb = tuple(int(hex_str[i]*2, 16) for i in range(3))
+                    except Exception:
+                        text_rgb = (255, 255, 255)
             elif "yellow" in font_color.lower() or "gold" in font_color.lower():
-                text_rgb = (255, 215, 0)
+                text_rgb = (250, 204, 21)
             elif "cyan" in font_color.lower():
-                text_rgb = (0, 255, 255)
+                text_rgb = (34, 211, 238)
+            elif "amber" in font_color.lower():
+                text_rgb = (245, 158, 11)
                 
-            # Subtitle background style
-            if bg_style == "box":
+            # Subtitle background style: translucent, solid, box, pill, none
+            bg_clean = (bg_style or "translucent").lower().strip()
+            if bg_clean in ("translucent", "box"):
                 draw.rounded_rectangle(
                     [box_x, box_y, box_x + box_w, box_y + box_h],
-                    radius=20,
-                    fill=(10, 15, 28, 230),
+                    radius=18,
+                    fill=(10, 15, 28, 200),
                     outline=(255, 255, 255, 60),
                     width=2
                 )
-            elif bg_style == "pill":
+            elif bg_clean in ("solid", "dark"):
+                draw.rounded_rectangle(
+                    [box_x, box_y, box_x + box_w, box_y + box_h],
+                    radius=18,
+                    fill=(5, 8, 18, 245),
+                    outline=(255, 255, 255, 100),
+                    width=2
+                )
+            elif bg_clean == "pill":
                 draw.rounded_rectangle(
                     [box_x, box_y, box_x + box_w, box_y + box_h],
                     radius=box_h // 2,
@@ -289,16 +349,13 @@ class ImageToVideoService:
                     outline=(59, 130, 246, 180),
                     width=2
                 )
-            elif bg_style == "outline":
-                # Render strong dark drop shadow
-                pass
 
             curr_y = box_y + sub_pad_y
             for i, line in enumerate(lines):
                 lx = box_x + (box_w - line_widths[i]) / 2
-                if bg_style == "outline" or bg_style == "none":
-                    for ox, oy in [(-2, -2), (2, -2), (-2, 2), (2, 2), (0, 2), (0, -2)]:
-                        draw.text((lx + ox, curr_y + oy), line, fill=(0, 0, 0, 240), font=s_font)
+                # High-contrast text drop shadow for maximum readability
+                for ox, oy in [(-2, -2), (2, -2), (-2, 2), (2, 2), (0, 2), (0, -2), (1, 1), (-1, -1)]:
+                    draw.text((lx + ox, curr_y + oy), line, fill=(0, 0, 0, 230), font=s_font)
                 draw.text((lx, curr_y), line, fill=(*text_rgb, 255), font=s_font)
                 curr_y += line_heights[i] + 8
 

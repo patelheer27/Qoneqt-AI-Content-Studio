@@ -24,13 +24,30 @@ JOBS_PROGRESS = {}
 
 @router.get("/voices")
 def get_voices():
-    """Returns available high-definition TTS voices."""
-    return tts_service.get_available_voices()
+    """Returns available high-definition TTS voices: Female and Male only."""
+    return [
+        {
+            "id": "en-US-JennyNeural",
+            "name": "Female (Jenny)",
+            "gender": "Female",
+            "style": "Warm & Natural",
+            "accent": "US",
+            "language": "English"
+        },
+        {
+            "id": "en-US-GuyNeural",
+            "name": "Male (Guy)",
+            "gender": "Male",
+            "style": "Professional & Confident",
+            "accent": "US",
+            "language": "English"
+        }
+    ]
 
 @router.get("/music-tracks")
 def get_music_tracks():
-    """Returns built-in ambient background music tracks."""
-    return image_to_video_service.get_built_in_music_tracks()
+    """Returns background music tracks list (disabled by user configuration)."""
+    return []
 
 @router.post("/upload-image")
 async def upload_images(files: List[UploadFile] = File(...)):
@@ -257,30 +274,16 @@ def _run_video_generation_pipeline(job_id: int, req_data: dict):
             transitions.append(sc.get("transition", "crossfade"))
             transition_durations.append(float(sc.get("transition_duration", 0.8)))
 
-        # Stage 3: Background music setup
-        bg_music_path = None
-        if settings.get("music_enabled"):
-            custom_m = settings.get("custom_music_url")
-            if custom_m:
-                candidate_m = image_to_video_service._resolve_local_path(custom_m)
-                if os.path.exists(candidate_m):
-                    bg_music_path = candidate_m
-            else:
-                track_id = settings.get("music_track") or settings.get("music_id") or "ambient_calm"
-                track_file = os.path.join(image_to_video_service.music_dir, f"{track_id}.mp3")
-                if os.path.exists(track_file):
-                    bg_music_path = track_file
-
-        # Stage 4: Transitions and Audio Mixing
-        update_progress(80, "Applying cinematic transitions & mixing audio...")
+        # Stage 3: Transitions and Audio Assembly (Background music disabled by configuration)
+        update_progress(80, "Applying cinematic transitions & compiling audio...")
         output_filename = f"image_to_video_{job_id}_{uuid.uuid4().hex[:8]}.mp4"
         
         final_mp4 = image_to_video_service.assemble_final_video(
             scene_video_paths=rendered_scene_clips,
             transitions=transitions,
             transition_durations=transition_durations,
-            bg_music_path=bg_music_path,
-            bg_music_volume=float(settings.get("music_volume") or 0.18),
+            bg_music_path=None,
+            bg_music_volume=0.0,
             voice_volume=float(settings.get("voice_volume") if settings.get("voice_volume") is not None else settings.get("narration_volume", 1.0)),
             output_filename=output_filename
         )
