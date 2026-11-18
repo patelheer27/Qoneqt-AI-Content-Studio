@@ -172,18 +172,16 @@ export const imageToVideoApi = {
   },
   uploadImages: async (files: File[]) => {
     const formData = new FormData();
-    files.forEach((file) => formData.append('files', file));
-    const res = await apiClient.post('/image-to-video/upload-image', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
+    files.forEach((file) => {
+      formData.append('files', file);
     });
+    const res = await apiClient.post('/image-to-video/upload-image', formData);
     return res.data;
   },
   uploadAudio: async (file: File) => {
     const formData = new FormData();
     formData.append('file', file);
-    const res = await apiClient.post('/image-to-video/upload-audio', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    });
+    const res = await apiClient.post('/image-to-video/upload-audio', formData);
     return res.data;
   },
   previewScene: async (data: any) => {

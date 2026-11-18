@@ -1,4 +1,5 @@
 import os
+import io
 import uuid
 import time
 import subprocess
@@ -73,47 +74,38 @@ class ImageToVideoService:
             return (720, 1280) if is_720 else (1080, 1920)
 
     def save_uploaded_image(self, file_content: bytes, filename: str) -> Dict[str, Any]:
-        """Validates and saves an uploaded image (JPG, JPEG, PNG, WEBP, JFIF)."""
+        """Validates and saves an uploaded image (JPG, JPEG, PNG, WEBP, JFIF, BMP)."""
         ext = os.path.splitext(filename)[1].lower()
-        if ext not in [".jpg", ".jpeg", ".png", ".webp", ".jfif"]:
-            raise ValueError(f"Unsupported image format '{ext}'. Supported formats: JPG, JPEG, PNG, WEBP, JFIF.")
+        if ext not in [".jpg", ".jpeg", ".png", ".webp", ".jfif", ".bmp"]:
+            raise ValueError(f"Unsupported image format '{ext}'. Supported formats: JPG, JPEG, PNG, WEBP, JFIF, BMP.")
             
         unique_id = uuid.uuid4().hex[:12]
         base_name = os.path.splitext(re.sub(r'[^a-zA-Z0-9_.-]', '', filename))[0]
-        # For JFIF files, convert and save as .jpg for maximum cross-browser and FFmpeg compatibility
-        target_ext = ".jpg" if ext == ".jfif" else ext
+        # For JFIF or BMP files, save as .jpg for maximum cross-browser and FFmpeg compatibility
+        target_ext = ".jpg" if ext in [".jfif", ".bmp"] else ext
         safe_filename = f"{unique_id}_{base_name}{target_ext}"
         file_path = os.path.join(self.uploads_dir, safe_filename)
         
-        # Save temp file first to inspect and convert safely
-        temp_path = os.path.join(self.uploads_dir, f"temp_{unique_id}_{filename}")
-        with open(temp_path, "wb") as f:
-            f.write(file_content)
-            
         try:
-            with Image.open(temp_path) as img:
+            with Image.open(io.BytesIO(file_content)) as img:
                 # Normalize EXIF orientation if needed
                 img = ImageOps.exif_transpose(img) or img
                 w, h = img.size
                 img_format = img.format or "JPEG"
-                if ext == ".jfif":
+                if ext in [".jfif", ".bmp"]:
                     # Convert to RGB and save as standard high-quality JPEG
                     rgb_img = img.convert("RGB")
                     rgb_img.save(file_path, "JPEG", quality=95)
                 else:
-                    shutil.move(temp_path, file_path)
+                    with open(file_path, "wb") as f:
+                        f.write(file_content)
         except Exception as e:
-            if os.path.exists(temp_path):
-                os.remove(temp_path)
             if os.path.exists(file_path):
-                os.remove(file_path)
-            raise ValueError(f"Corrupt or invalid image file: {e}")
-        finally:
-            if os.path.exists(temp_path):
                 try:
-                    os.remove(temp_path)
+                    os.remove(file_path)
                 except Exception:
                     pass
+            raise ValueError(f"Corrupt or invalid image file: {e}")
 
         file_size = os.path.getsize(file_path)
         url = f"/storage/assets/uploads/{safe_filename}"

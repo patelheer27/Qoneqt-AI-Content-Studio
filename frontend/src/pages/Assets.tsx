@@ -197,10 +197,10 @@ export default function Assets() {
 
   const handleFilesUpload = async (files: File[]) => {
     setUploadError(null);
-    const validExtensions = ['jpg', 'jpeg', 'png', 'webp', 'jfif'];
+    const validExtensions = ['jpg', 'jpeg', 'png', 'webp', 'jfif', 'bmp'];
     const validFiles = files.filter(f => {
       const ext = f.name.split('.').pop()?.toLowerCase() || '';
-      return validExtensions.includes(ext);
+      return validExtensions.includes(ext) || (f.type && f.type.startsWith('image/'));
     });
 
     if (validFiles.length === 0) {
@@ -738,12 +738,13 @@ export default function Assets() {
               ref={fileInputRef}
               type="file"
               multiple
-              accept="image/jpeg,image/png,image/webp,image/jfif,.jfif,.jpg,.jpeg,.png,.webp"
+              accept="image/*,.jfif,.jpg,.jpeg,.png,.webp,.bmp"
               className="hidden"
               onChange={e => {
                 if (e.target.files && e.target.files.length > 0) {
                   handleFilesUpload(Array.from(e.target.files));
                 }
+                e.target.value = '';
               }}
             />
             {isUploading && (

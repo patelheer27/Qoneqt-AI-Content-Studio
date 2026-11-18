@@ -51,12 +51,24 @@ def get_music_tracks():
     return []
 
 @router.post("/upload-image")
-async def upload_images(files: List[UploadFile] = File(...)):
+async def upload_images(
+    files: Optional[List[UploadFile]] = File(None),
+    file: Optional[UploadFile] = File(None)
+):
     """Uploads and validates one or multiple images, extracting dimensions and format."""
+    upload_list = []
+    if files:
+        upload_list.extend([f for f in files if f and f.filename])
+    if file and file.filename:
+        upload_list.append(file)
+        
+    if not upload_list:
+        raise HTTPException(status_code=400, detail="No image files provided.")
+
     results = []
     errors = []
     
-    for f in files:
+    for f in upload_list:
         try:
             content = await f.read()
             if len(content) > 50 * 1024 * 1024:
