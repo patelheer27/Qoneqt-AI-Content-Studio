@@ -16,6 +16,7 @@ interface SceneItem {
   height?: number;
   size_kb?: number;
   text: string;
+  headline?: string;
   duration: number;
   motion_type: 'camera' | 'ai';
   camera_motion: string;
@@ -129,9 +130,15 @@ export default function Assets() {
   const [subtitleBg, setSubtitleBg] = useState<'translucent' | 'solid' | 'none'>('translucent');
   const [subtitlePosition, setSubtitlePosition] = useState<'bottom' | 'center' | 'top'>('bottom');
 
-  // Script Bulk input modal/tab
+  // Script Modal state (AI generator & Custom script)
+  const [showScriptModal, setShowScriptModal] = useState(false);
+  const [scriptModalTab, setScriptModalTab] = useState<'ai' | 'custom'>('ai');
+  const [aiTopic, setAiTopic] = useState('');
+  const [aiTone, setAiTone] = useState('Inspiring');
+  const [isGeneratingScript, setIsGeneratingScript] = useState(false);
+  const [generatedAiScenes, setGeneratedAiScenes] = useState<Array<{ scene_index: number; headline: string; text: string }>>([]);
+  const [rewritingSceneIndex, setRewritingSceneIndex] = useState<number | null>(null);
   const [bulkScript, setBulkScript] = useState('');
-  const [showBulkScriptModal, setShowBulkScriptModal] = useState(false);
 
   // Scene Preview Modal
   const [previewingScene, setPreviewingScene] = useState<SceneItem | null>(null);
@@ -273,6 +280,89 @@ export default function Assets() {
     });
   };
 
+  // Auto infer topic from uploaded scenes if aiTopic is empty
+  const getSuggestedTopic = () => {
+    if (scenes.length === 0) return '';
+    const names = scenes.map(s => {
+      const fn = s.filename || '';
+      const noExt = fn.replace(/\.[^/.]+$/, '');
+      const clean = noExt.replace(/^[a-f0-9]{8,16}_/, '').replace(/[_\W]+/g, ' ').trim();
+      return clean;
+    }).filter(n => n && !n.toLowerCase().startsWith('temp') && !/^(image|img|\d+)$/i.test(n));
+    return names.length > 0 ? names[0].charAt(0).toUpperCase() + names[0].slice(1) : 'Visual Story';
+  };
+
+  const handleGenerateAiScript = async (topicOverride?: string) => {
+    if (scenes.length === 0) {
+      alert('Please upload one or more images first.');
+      return;
+    }
+    const topicToUse = topicOverride || aiTopic.trim() || getSuggestedTopic();
+    setIsGeneratingScript(true);
+    try {
+      const res = await imageToVideoApi.generateScript({
+        topic: topicToUse,
+        tone: aiTone,
+        scenes_count: scenes.length,
+        images_info: scenes.map((s, i) => ({ filename: s.filename, scene_index: i + 1 })),
+      });
+
+      if (res && res.scenes && res.scenes.length > 0) {
+        setGeneratedAiScenes(res.scenes);
+        if (!aiTopic && res.topic) {
+          setAiTopic(res.topic);
+        }
+      }
+    } catch (err: any) {
+      alert('Failed to generate AI script. Please check your topic or try again.');
+    } finally {
+      setIsGeneratingScript(false);
+    }
+  };
+
+  const applyGeneratedAiScript = () => {
+    if (!generatedAiScenes || generatedAiScenes.length === 0) return;
+    setScenes(prev =>
+      prev.map((sc, i) => {
+        if (i < generatedAiScenes.length) {
+          return {
+            ...sc,
+            text: generatedAiScenes[i].text,
+            headline: generatedAiScenes[i].headline || sc.headline,
+          };
+        }
+        return sc;
+      })
+    );
+    setShowScriptModal(false);
+  };
+
+  const handleRewriteSingleScene = async (sceneIdx: number) => {
+    if (sceneIdx < 0 || sceneIdx >= scenes.length) return;
+    const targetScene = scenes[sceneIdx];
+    setRewritingSceneIndex(sceneIdx);
+    try {
+      const res = await imageToVideoApi.rewriteSceneScript({
+        scene_index: sceneIdx + 1,
+        current_text: targetScene.text || '',
+        topic: aiTopic || getSuggestedTopic(),
+        tone: aiTone,
+        filename: targetScene.filename,
+      });
+
+      if (res && res.text) {
+        updateScene(sceneIdx, {
+          text: res.text,
+          headline: res.headline || targetScene.headline,
+        });
+      }
+    } catch (err) {
+      console.warn('Failed to rewrite scene script:', err);
+    } finally {
+      setRewritingSceneIndex(null);
+    }
+  };
+
   // Distribute bulk script into scenes
   const applyBulkScript = () => {
     const lines = bulkScript
@@ -290,7 +380,7 @@ export default function Assets() {
         return sc;
       })
     );
-    setShowBulkScriptModal(false);
+    setShowScriptModal(false);
   };
 
   // Preview individual scene with subtitles and selected voice
@@ -670,7 +760,7 @@ export default function Assets() {
 
           {/* Timeline & Scene Editor */}
           <div className="space-y-4">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div className="flex items-center gap-2">
                 <Film className="w-5 h-5 text-blue-600" />
                 <h3 className="text-lg font-black text-gray-900 tracking-tight">Scenes & Script Timeline</h3>
@@ -679,22 +769,89 @@ export default function Assets() {
                 </span>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <button
-                  onClick={() => setShowBulkScriptModal(true)}
+                  type="button"
+                  onClick={() => {
+                    setScriptModalTab('ai');
+                    if (!aiTopic) setAiTopic(getSuggestedTopic());
+                    setShowScriptModal(true);
+                  }}
                   disabled={scenes.length === 0}
-                  className="text-xs font-bold text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
+                  className="flex items-center gap-1.5 text-xs font-bold text-white bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 px-3.5 py-1.5 rounded-lg shadow-xs transition-all cursor-pointer disabled:opacity-40"
+                  title="Generate engaging scene scripts and subtitles with AI"
                 >
-                  Distribute Script to Scenes
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>Generate Script with AI</span>
                 </button>
+
                 <button
+                  type="button"
+                  onClick={() => {
+                    setScriptModalTab('custom');
+                    setShowScriptModal(true);
+                  }}
+                  disabled={scenes.length === 0}
+                  className="flex items-center gap-1.5 text-xs font-bold text-blue-700 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg border border-blue-200 transition-colors cursor-pointer disabled:opacity-40"
+                  title="Enter or paste your own custom script"
+                >
+                  <Type className="w-3.5 h-3.5" />
+                  <span>Custom Script (Paste / Write)</span>
+                </button>
+
+                <button
+                  type="button"
                   onClick={() => fileInputRef.current?.click()}
-                  className="flex items-center gap-1 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 px-3 py-1.5 rounded-lg shadow-sm transition-colors cursor-pointer"
+                  className="flex items-center gap-1 text-xs font-bold text-gray-700 bg-white hover:bg-gray-50 border border-gray-200 px-3 py-1.5 rounded-lg shadow-2xs transition-colors cursor-pointer"
                 >
                   <Plus className="w-3.5 h-3.5" /> Add Images
                 </button>
               </div>
             </div>
+
+            {/* Script Choice Quick Banner */}
+            {scenes.length > 0 && (
+              <div className="bg-gradient-to-r from-purple-50 via-blue-50 to-indigo-50 border border-purple-100 rounded-xl p-3 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-2xs">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-purple-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                    <Sparkles className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h5 className="text-xs font-black text-gray-900">
+                      {scenes.length} Images Uploaded for Scripting & Video
+                    </h5>
+                    <p className="text-[11px] text-gray-600">
+                      Let AI craft personalized narration for each image, or provide your own custom script.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setScriptModalTab('ai');
+                      if (!aiTopic) setAiTopic(getSuggestedTopic());
+                      setShowScriptModal(true);
+                    }}
+                    className="flex items-center gap-1.5 text-xs font-bold text-white bg-purple-600 hover:bg-purple-700 px-3 py-1.5 rounded-lg shadow-xs cursor-pointer transition-colors"
+                  >
+                    <Sparkles className="w-3.5 h-3.5" />
+                    Generate with AI
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setScriptModalTab('custom');
+                      setShowScriptModal(true);
+                    }}
+                    className="flex items-center gap-1.5 text-xs font-bold text-gray-700 bg-white hover:bg-gray-100 border border-gray-200 px-3 py-1.5 rounded-lg shadow-2xs cursor-pointer transition-colors"
+                  >
+                    <Type className="w-3.5 h-3.5" />
+                    Write My Own Script
+                  </button>
+                </div>
+              </div>
+            )}
 
             {scenes.length === 0 ? (
               <div className="bg-white rounded-2xl border border-gray-100 p-12 text-center text-gray-400">
@@ -788,9 +945,33 @@ export default function Assets() {
                       <div className="flex-1 space-y-4">
                         {/* Narration Script Text */}
                         <div>
-                          <label className="block text-xs font-bold text-gray-700 mb-1">
-                            Scene Script & Subtitle Text
-                          </label>
+                          <div className="flex items-center justify-between mb-1">
+                            <label className="block text-xs font-bold text-gray-700">
+                              Scene Script & Subtitle Text
+                            </label>
+                            <div className="flex items-center gap-2">
+                              <span className="text-[10px] text-gray-400 font-medium">
+                                {scene.text ? `${scene.text.trim().split(/\s+/).length} words (~${Math.max(2, Math.round(scene.text.trim().split(/\s+/).length / 3))}s)` : '0 words'}
+                              </span>
+                              <button
+                                type="button"
+                                disabled={rewritingSceneIndex === idx}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleRewriteSingleScene(idx);
+                                }}
+                                className="flex items-center gap-1 text-[10px] font-bold text-purple-600 hover:text-purple-700 bg-purple-50 hover:bg-purple-100 px-2 py-0.5 rounded-md border border-purple-200 transition-colors cursor-pointer disabled:opacity-50"
+                                title="Rewrite and polish this scene's script with AI"
+                              >
+                                {rewritingSceneIndex === idx ? (
+                                  <RefreshCw className="w-3 h-3 animate-spin text-purple-600" />
+                                ) : (
+                                  <Sparkles className="w-3 h-3 text-purple-600" />
+                                )}
+                                <span>AI Rewrite</span>
+                              </button>
+                            </div>
+                          </div>
                           <textarea
                             value={scene.text}
                             onChange={(e) => updateScene(idx, { text: e.target.value })}
@@ -1323,42 +1504,226 @@ export default function Assets() {
         </div>
       </div>
 
-      {/* Bulk Script Distribution Modal */}
-      {showBulkScriptModal && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-lg font-black text-gray-900">Distribute Script to Scenes</h3>
+      {/* Script & Narration Studio Modal (AI Generation & Custom User Script Facility) */}
+      {showScriptModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-2xl space-y-4 max-h-[90vh] flex flex-col">
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-gray-100 pb-3">
+              <div>
+                <h3 className="text-lg font-black text-gray-900 flex items-center gap-2">
+                  <Sparkles className="w-5 h-5 text-purple-600" />
+                  Script & Narration Studio
+                </h3>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Generate high-retention narration with AI or enter your own custom script.
+                </p>
+              </div>
               <button
-                onClick={() => setShowBulkScriptModal(false)}
-                className="p-1 text-gray-400 hover:text-gray-600 rounded-lg cursor-pointer"
+                type="button"
+                onClick={() => setShowScriptModal(false)}
+                className="p-1.5 text-gray-400 hover:text-gray-600 rounded-lg cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <p className="text-xs text-gray-500">
-              Paste your complete script below. Each line or paragraph will automatically be assigned in order to your uploaded scenes.
-            </p>
-            <textarea
-              value={bulkScript}
-              onChange={(e) => setBulkScript(e.target.value)}
-              rows={6}
-              placeholder="Paste complete script here with each scene narration on a new line..."
-              className="w-full text-xs font-medium p-3 bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
-            />
-            <div className="flex justify-end gap-2">
+
+            {/* Mode Switch Tabs: AI Script vs Custom Script */}
+            <div className="flex bg-gray-100 p-1 rounded-xl gap-1">
               <button
-                onClick={() => setShowBulkScriptModal(false)}
+                type="button"
+                onClick={() => setScriptModalTab('ai')}
+                className={`flex-1 py-2 text-xs font-bold rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                  scriptModalTab === 'ai'
+                    ? 'bg-white text-purple-700 shadow-xs'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                <Sparkles className="w-3.5 h-3.5 text-purple-600" />
+                ✨ AI Script Generator
+              </button>
+              <button
+                type="button"
+                onClick={() => setScriptModalTab('custom')}
+                className={`flex-1 py-2 text-xs font-bold rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                  scriptModalTab === 'custom'
+                    ? 'bg-white text-blue-700 shadow-xs'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                <Type className="w-3.5 h-3.5 text-blue-600" />
+                📝 Provide Custom Script
+              </button>
+            </div>
+
+            {/* Tab 1: AI Script Generation */}
+            {scriptModalTab === 'ai' && (
+              <div className="space-y-4 overflow-y-auto pr-1 flex-1">
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1">
+                    Video Topic, Theme or Prompt
+                  </label>
+                  <input
+                    type="text"
+                    value={aiTopic}
+                    onChange={(e) => setAiTopic(e.target.value)}
+                    placeholder="e.g., Great Standing Buddha Statue - Peace, Wisdom and Compassion..."
+                    className="w-full text-xs font-medium p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-purple-500 focus:outline-none"
+                  />
+                  {getSuggestedTopic() && (
+                    <div className="flex items-center gap-1.5 mt-1.5 text-[11px] text-gray-500">
+                      <span>Suggested from uploaded images:</span>
+                      <button
+                        type="button"
+                        onClick={() => setAiTopic(getSuggestedTopic())}
+                        className="text-purple-600 font-bold hover:underline cursor-pointer"
+                      >
+                        "{getSuggestedTopic()}"
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-1">
+                      Narration Tone
+                    </label>
+                    <select
+                      value={aiTone}
+                      onChange={(e) => setAiTone(e.target.value)}
+                      className="w-full text-xs font-semibold bg-gray-50 border border-gray-200 rounded-xl p-2.5 focus:outline-none focus:ring-2 focus:ring-purple-500 cursor-pointer"
+                    >
+                      <option value="Inspiring">Inspiring & Uplifting</option>
+                      <option value="Educational">Educational & Informative</option>
+                      <option value="Cinematic">Cinematic & Dramatic</option>
+                      <option value="Storytelling">Storytelling & Narrative</option>
+                      <option value="Promotional">Energetic & Promotional</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-1">
+                      Scene Count
+                    </label>
+                    <div className="p-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs font-semibold text-gray-700 flex items-center justify-between">
+                      <span>{scenes.length} Scenes</span>
+                      <span className="text-[10px] text-purple-600 font-bold">~4s per scene</span>
+                    </div>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  disabled={isGeneratingScript || scenes.length === 0}
+                  onClick={() => handleGenerateAiScript()}
+                  className="w-full py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-xl text-xs font-bold shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                >
+                  {isGeneratingScript ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      Generating narration script with AI...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-4 h-4" />
+                      {generatedAiScenes.length > 0 ? 'Regenerate Script with AI' : 'Generate Script with AI'}
+                    </>
+                  )}
+                </button>
+
+                {/* Generated Scenes Preview */}
+                {generatedAiScenes.length > 0 && (
+                  <div className="space-y-3 pt-2 border-t border-gray-100">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-black text-gray-800">
+                        Generated Script Preview ({generatedAiScenes.length} scenes)
+                      </span>
+                      <span className="text-[10px] text-gray-500">
+                        You can edit any line before applying
+                      </span>
+                    </div>
+
+                    <div className="space-y-2.5 max-h-56 overflow-y-auto pr-1">
+                      {generatedAiScenes.map((item, idx) => (
+                        <div key={idx} className="p-3 bg-purple-50/50 rounded-xl border border-purple-100 space-y-1.5">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[11px] font-black text-purple-900">
+                              Scene {item.scene_index || idx + 1}: {item.headline || `Image ${idx + 1}`}
+                            </span>
+                          </div>
+                          <textarea
+                            value={item.text}
+                            onChange={(e) => {
+                              const updated = [...generatedAiScenes];
+                              updated[idx] = { ...updated[idx], text: e.target.value };
+                              setGeneratedAiScenes(updated);
+                            }}
+                            rows={2}
+                            className="w-full text-xs font-medium p-2 bg-white border border-purple-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-purple-500 resize-none"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Tab 2: Custom User Script */}
+            {scriptModalTab === 'custom' && (
+              <div className="space-y-3 overflow-y-auto pr-1 flex-1">
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-bold text-gray-700">
+                      Enter or Paste Your Script
+                    </label>
+                    <span className="text-[10px] font-semibold text-blue-600">
+                      {bulkScript.split('\n').filter(l => l.trim()).length} lines entered for {scenes.length} scenes
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-gray-500 mb-2">
+                    Write each scene narration on a new line or paragraph. Each line will automatically be distributed to your uploaded scenes in order.
+                  </p>
+                  <textarea
+                    value={bulkScript}
+                    onChange={(e) => setBulkScript(e.target.value)}
+                    rows={8}
+                    placeholder={`Image 1: Welcome to the beautiful sanctuary of peace.\nImage 2: Observe the calming presence and mindful posture.\nImage 3: Experience the timeless wisdom and serene journey.`}
+                    className="w-full text-xs font-medium p-3 bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Footer Buttons */}
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-gray-100">
+              <button
+                type="button"
+                onClick={() => setShowScriptModal(false)}
                 className="px-4 py-2 border border-gray-200 text-gray-700 rounded-xl text-xs font-bold hover:bg-gray-50 cursor-pointer"
               >
                 Cancel
               </button>
-              <button
-                onClick={applyBulkScript}
-                className="px-4 py-2 bg-blue-600 text-white rounded-xl text-xs font-bold hover:bg-blue-700 cursor-pointer"
-              >
-                Apply to Scenes
-              </button>
+              {scriptModalTab === 'ai' ? (
+                <button
+                  type="button"
+                  disabled={generatedAiScenes.length === 0}
+                  onClick={applyGeneratedAiScript}
+                  className="px-5 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-bold shadow-sm transition-all cursor-pointer disabled:opacity-40"
+                >
+                  Apply AI Script to Scenes
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={applyBulkScript}
+                  disabled={!bulkScript.trim()}
+                  className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-sm transition-all cursor-pointer disabled:opacity-40"
+                >
+                  Apply Custom Script to Scenes
+                </button>
+              )}
             </div>
           </div>
         </div>

@@ -106,3 +106,23 @@ class JobStatusResponse(BaseModel):
 
     class Config:
         extra = "allow"
+
+class GenerateScriptRequestSchema(BaseModel):
+    topic: Optional[str] = ""
+    tone: Optional[str] = "Inspiring"
+    scenes_count: int = 5
+    images_info: Optional[List[Dict[str, Any]]] = None
+    target_duration: Optional[int] = 30
+
+    class Config:
+        extra = "allow"
+
+class RewriteSceneRequestSchema(BaseModel):
+    scene_index: int = 1
+    current_text: Optional[str] = ""
+    topic: Optional[str] = ""
+    tone: Optional[str] = "Inspiring"
+    filename: Optional[str] = ""
+
+    class Config:
+        extra = "allow"

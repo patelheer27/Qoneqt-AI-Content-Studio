@@ -11,7 +11,8 @@ from app.database import get_db, SessionLocal
 from app.models.image_to_video import ImageToVideoProject
 from app.schemas.image_to_video import (
     SceneSchema, SettingsSchema, GenerateRequestSchema,
-    PreviewSceneRequestSchema, JobStatusResponse
+    PreviewSceneRequestSchema, JobStatusResponse,
+    GenerateScriptRequestSchema, RewriteSceneRequestSchema
 )
 from app.services.image_to_video_service import image_to_video_service
 from app.services.tts_service import tts_service
@@ -89,6 +90,35 @@ async def upload_audio(file: UploadFile = File(...)):
         }
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+@router.post("/generate-script")
+def generate_ai_script(req: GenerateScriptRequestSchema):
+    """Generates an engaging, cohesive scene-by-scene script using AI from user images/topic."""
+    try:
+        result = image_to_video_service.generate_script_for_images(
+            topic=req.topic or "",
+            tone=req.tone or "Inspiring",
+            scenes_count=req.scenes_count or 5,
+            images_info=req.images_info or []
+        )
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to generate AI script: {str(e)}")
+
+@router.post("/rewrite-scene-script")
+def rewrite_single_scene_script(req: RewriteSceneRequestSchema):
+    """Rewrites or enhances an individual scene's voiceover narration with AI."""
+    try:
+        result = image_to_video_service.rewrite_scene_script(
+            scene_index=req.scene_index,
+            current_text=req.current_text or "",
+            topic=req.topic or "",
+            tone=req.tone or "Inspiring",
+            filename=req.filename or ""
+        )
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to rewrite scene script: {str(e)}")
 
 @router.post("/preview-scene")
 def preview_single_scene(req: PreviewSceneRequestSchema):

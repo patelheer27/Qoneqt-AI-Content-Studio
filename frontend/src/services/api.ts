@@ -190,6 +190,25 @@ export const imageToVideoApi = {
     const res = await apiClient.post('/image-to-video/preview-scene', data);
     return res.data;
   },
+  generateScript: async (data: {
+    topic?: string;
+    tone?: string;
+    scenes_count: number;
+    images_info?: Array<{ filename: string; scene_index: number }>;
+  }) => {
+    const res = await apiClient.post('/image-to-video/generate-script', data);
+    return res.data;
+  },
+  rewriteSceneScript: async (data: {
+    scene_index: number;
+    current_text?: string;
+    topic?: string;
+    tone?: string;
+    filename?: string;
+  }) => {
+    const res = await apiClient.post('/image-to-video/rewrite-scene-script', data);
+    return res.data;
+  },
   generateVideo: async (data: any) => {
     const res = await apiClient.post('/image-to-video/generate', data);
     return res.data;
