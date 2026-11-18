@@ -1144,27 +1144,16 @@ export default function Assets() {
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-bold text-gray-700 mb-1">Position</label>
-                    <select
-                      value={subtitlePosition}
-                      onChange={(e) => setSubtitlePosition(e.target.value as any)}
-                      className="w-full text-xs font-semibold bg-gray-50 border border-gray-200 rounded-lg p-2 focus:outline-none focus:ring-1 focus:ring-purple-500 cursor-pointer"
-                    >
-                      <option value="bottom">Bottom Overlay</option>
-                      <option value="center">Center Focus</option>
-                      <option value="top">Top Header</option>
-                    </select>
-
-                    {/* Quick position toggle pills */}
-                    <div className="grid grid-cols-3 gap-1 mt-1.5">
+                    <div className="grid grid-cols-3 gap-1 bg-gray-50 p-1 rounded-lg border border-gray-200">
                       {(['top', 'center', 'bottom'] as const).map(pos => (
                         <button
                           key={pos}
                           type="button"
                           onClick={() => setSubtitlePosition(pos)}
-                          className={`py-1 text-[11px] font-bold rounded-md border transition-all cursor-pointer capitalize text-center ${
+                          className={`py-1.5 text-xs font-bold rounded-md transition-all cursor-pointer capitalize text-center ${
                             subtitlePosition === pos
-                              ? 'bg-purple-600 text-white border-purple-600 shadow-xs'
-                              : 'bg-gray-100 text-gray-600 border-gray-200 hover:bg-gray-200'
+                              ? 'bg-purple-600 text-white shadow-xs'
+                              : 'text-gray-600 hover:text-gray-900 hover:bg-gray-200/60'
                           }`}
                         >
                           {pos === 'top' ? 'Top' : pos === 'center' ? 'Center' : 'Bottom'}
