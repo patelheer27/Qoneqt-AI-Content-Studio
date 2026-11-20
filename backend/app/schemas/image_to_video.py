@@ -7,6 +7,7 @@ class SceneSchema(BaseModel):
     image_url: str
     image_filename: Optional[str] = None
     image_path: Optional[str] = None
+    subject: Optional[str] = ""
     width: Optional[int] = 1080
     height: Optional[int] = 1920
     file_size: Optional[int] = 0
@@ -121,6 +122,7 @@ class RewriteSceneRequestSchema(BaseModel):
     scene_index: int = 1
     current_text: Optional[str] = ""
     topic: Optional[str] = ""
+    subject: Optional[str] = ""
     tone: Optional[str] = "Inspiring"
     filename: Optional[str] = ""
 

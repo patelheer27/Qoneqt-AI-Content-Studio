@@ -125,6 +125,7 @@ def rewrite_single_scene_script(req: RewriteSceneRequestSchema):
             scene_index=req.scene_index,
             current_text=req.current_text or "",
             topic=req.topic or "",
+            subject=req.subject or "",
             tone=req.tone or "Inspiring",
             filename=req.filename or ""
         )

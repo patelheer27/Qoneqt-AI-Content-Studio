@@ -192,7 +192,7 @@ export const imageToVideoApi = {
     topic?: string;
     tone?: string;
     scenes_count: number;
-    images_info?: Array<{ filename: string; scene_index: number }>;
+    images_info?: Array<{ filename?: string; scene_index: number; subject?: string; description?: string }>;
   }) => {
     const res = await apiClient.post('/image-to-video/generate-script', data);
     return res.data;
@@ -201,6 +201,7 @@ export const imageToVideoApi = {
     scene_index: number;
     current_text?: string;
     topic?: string;
+    subject?: string;
     tone?: string;
     filename?: string;
   }) => {

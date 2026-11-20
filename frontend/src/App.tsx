@@ -24,8 +24,8 @@ function SidebarLink({ to, icon: Icon, label, badge }: { to: string; icon: any; 
       to={to} 
       className={`flex items-center justify-between px-4 py-3 rounded-xl transition-all duration-200 font-medium ${
         isActive 
-        ? 'bg-blue-600 text-white shadow-md shadow-blue-200' 
-        : 'text-gray-500 hover:text-blue-600 hover:bg-blue-50'
+        ? 'bg-[var(--color-primary-blue)] text-white shadow-md shadow-[var(--color-primary-blue)]/25' 
+        : 'text-[var(--color-text-secondary)] hover:text-[var(--color-primary-blue)] hover:bg-[var(--color-primary-blue)]/10'
       }`}
     >
       <div className="flex items-center gap-3">
@@ -34,7 +34,7 @@ function SidebarLink({ to, icon: Icon, label, badge }: { to: string; icon: any; 
       </div>
       {badge && (
         <span className={`text-[10px] font-extrabold uppercase px-1.5 py-0.5 rounded ${
-          isActive ? 'bg-white/20 text-white' : 'bg-blue-100 text-blue-700'
+          isActive ? 'bg-white/20 text-white' : 'bg-[var(--color-primary-orange)]/20 text-[var(--color-primary-darkBlue)]'
         }`}>
           {badge}
         </span>
@@ -47,20 +47,20 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { user, logout } = useAuth();
 
   return (
-    <div className="flex h-screen bg-gray-50/50">
+    <div className="flex h-screen bg-[var(--color-background)] text-[var(--color-text-primary)]">
       {/* Sidebar */}
-      <aside className="w-64 bg-white border-r border-gray-100 flex flex-col shadow-sm z-10">
+      <aside className="w-64 bg-white border-r border-[var(--color-border)] flex flex-col shadow-xs z-10">
         <div className="p-6 pb-4">
           <Link to="/" className="flex items-center gap-3 group">
-            <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-orange-500 rounded-xl flex items-center justify-center shadow-lg group-hover:scale-105 transition-transform shrink-0">
+            <div className="w-10 h-10 bg-gradient-to-br from-[var(--color-primary-blue)] to-[var(--color-primary-orange)] rounded-xl flex items-center justify-center shadow-lg group-hover:scale-105 transition-transform shrink-0">
               <Sparkles className="w-5 h-5 text-white" />
             </div>
             <div>
-              <h1 className="text-lg font-black text-gray-900 tracking-tight leading-none">Qoneqt AI</h1>
-              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mt-0.5">Content Studio</p>
+              <h1 className="text-lg font-black text-[var(--color-text-primary)] tracking-tight leading-none">Qoneqt AI</h1>
+              <p className="text-[10px] font-bold text-[var(--color-text-secondary)] uppercase tracking-wider mt-0.5">Content Studio</p>
             </div>
           </Link>
-          <p className="text-[10px] font-semibold text-blue-600/80 mt-2 tracking-tight">
+          <p className="text-[10px] font-semibold text-[var(--color-primary-blue)] mt-2 tracking-tight">
             From One Idea to a Publish-Ready Video.
           </p>
         </div>
@@ -73,7 +73,7 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
           <SidebarLink to="/templates" icon={Layout} label="Templates" />
           
           <div className="pt-3 pb-1">
-            <div className="px-4 text-[10px] font-extrabold text-gray-400 uppercase tracking-wider">
+            <div className="px-4 text-[10px] font-extrabold text-[var(--color-text-secondary)] uppercase tracking-wider">
               Security & Privacy
             </div>
           </div>
@@ -81,19 +81,19 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
         </nav>
         
         {/* User Account & Logout Footer */}
-        <div className="p-4 border-t border-gray-100 space-y-2">
+        <div className="p-4 border-t border-[var(--color-border)] space-y-2">
           {user && (
-            <div className="p-2.5 bg-gray-50 rounded-xl border border-gray-100 flex items-center justify-between">
+            <div className="p-2.5 bg-[var(--color-background)] rounded-xl border border-[var(--color-border)] flex items-center justify-between">
               <div className="overflow-hidden pr-2">
-                <div className="text-xs font-bold text-gray-900 truncate">{user.email}</div>
-                <div className="text-[10px] text-emerald-600 font-semibold flex items-center gap-1">
+                <div className="text-xs font-bold text-[var(--color-text-primary)] truncate">{user.email}</div>
+                <div className="text-[10px] text-[var(--color-status-success)] font-semibold flex items-center gap-1">
                   <CheckCircle2 className="w-3 h-3" /> Verified OTP
                 </div>
               </div>
               <button
                 onClick={logout}
                 title="Log Out"
-                className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+                className="p-1.5 text-[var(--color-text-secondary)] hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
               >
                 <LogOut className="w-4 h-4" />
               </button>
@@ -104,7 +104,7 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 overflow-auto bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-blue-50/30 via-gray-50/50 to-gray-50/50">
+      <main className="flex-1 overflow-auto bg-[var(--color-background)]">
         {children}
       </main>
     </div>

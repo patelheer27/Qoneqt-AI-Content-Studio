@@ -12,6 +12,7 @@ interface SceneItem {
   image_url: string;
   image_path?: string;
   filename: string;
+  subject?: string;
   width?: number;
   height?: number;
   size_kb?: number;
@@ -218,10 +219,12 @@ export default function Assets() {
           image_url: img.url,
           image_path: img.file_path,
           filename: img.filename,
+          subject: img.subject || '',
           width: img.width,
           height: img.height,
           size_kb: img.file_size ? Math.round(img.file_size / 1024) : img.size_kb,
-          text: `Scene ${scenes.length + idx + 1}: Captivating visual moment.`,
+          headline: img.suggested_headline || `Scene ${scenes.length + idx + 1}`,
+          text: img.suggested_script || `Scene ${scenes.length + idx + 1}: Captivating visual moment.`,
           duration: 4.0,
           motion_type: 'camera',
           camera_motion: CAMERA_MOTIONS[idx % CAMERA_MOTIONS.length].id,
@@ -283,13 +286,17 @@ export default function Assets() {
   // Auto infer topic from uploaded scenes if aiTopic is empty
   const getSuggestedTopic = () => {
     if (scenes.length === 0) return '';
+    const validSubjects = scenes.map(s => s.subject?.trim()).filter(Boolean);
+    if (validSubjects.length > 0) {
+      return validSubjects[0]!;
+    }
     const names = scenes.map(s => {
       const fn = s.filename || '';
       const noExt = fn.replace(/\.[^/.]+$/, '');
       const clean = noExt.replace(/^[a-f0-9]{8,16}_/, '').replace(/[_\W]+/g, ' ').trim();
       return clean;
     }).filter(n => n && !n.toLowerCase().startsWith('temp') && !/^(image|img|\d+)$/i.test(n));
-    return names.length > 0 ? names[0].charAt(0).toUpperCase() + names[0].slice(1) : 'Visual Story';
+    return names.length > 0 ? names[0].charAt(0).toUpperCase() + names[0].slice(1) : 'Iconic Visual Story';
   };
 
   const handleGenerateAiScript = async (topicOverride?: string) => {
@@ -304,7 +311,11 @@ export default function Assets() {
         topic: topicToUse,
         tone: aiTone,
         scenes_count: scenes.length,
-        images_info: scenes.map((s, i) => ({ filename: s.filename, scene_index: i + 1 })),
+        images_info: scenes.map((s, i) => ({
+          filename: s.filename,
+          scene_index: i + 1,
+          subject: s.subject || '',
+        })),
       });
 
       if (res && res.scenes && res.scenes.length > 0) {
@@ -346,6 +357,7 @@ export default function Assets() {
         scene_index: sceneIdx + 1,
         current_text: targetScene.text || '',
         topic: aiTopic || getSuggestedTopic(),
+        subject: targetScene.subject || '',
         tone: aiTone,
         filename: targetScene.filename,
       });
@@ -943,7 +955,25 @@ export default function Assets() {
                       </div>
 
                       {/* Scene Configurations: Text, Motion & Transition */}
-                      <div className="flex-1 space-y-4">
+                      <div className="flex-1 space-y-3.5">
+                        {/* Image Subject Field */}
+                        <div>
+                          <div className="flex items-center justify-between mb-1">
+                            <label className="text-xs font-bold text-gray-700 flex items-center gap-1.5">
+                              <Sparkles className="w-3.5 h-3.5 text-blue-600" />
+                              Image Subject / Landmark (e.g. Sardar Vallabhbhai Patel Statue)
+                            </label>
+                            <span className="text-[10px] text-gray-400">Used by AI to generate tailored scene script</span>
+                          </div>
+                          <input
+                            type="text"
+                            value={scene.subject || ''}
+                            onChange={(e) => updateScene(idx, { subject: e.target.value })}
+                            placeholder="e.g. Sardar Vallabhbhai Patel Statue (Statue of Unity)..."
+                            className="w-full text-xs font-medium px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                          />
+                        </div>
+
                         {/* Narration Script Text */}
                         <div>
                           <div className="flex items-center justify-between mb-1">
@@ -1613,6 +1643,39 @@ export default function Assets() {
                     </div>
                   </div>
                 </div>
+
+                {/* Scene-Specific Image Subjects */}
+                {scenes.length > 0 && (
+                  <div className="space-y-2 border border-purple-100 rounded-xl p-3 bg-purple-50/40">
+                    <div className="flex items-center justify-between">
+                      <label className="block text-xs font-bold text-gray-800">
+                        Scene Image Subjects (AI generates script specifically for each image)
+                      </label>
+                      <span className="text-[10px] text-purple-700 font-bold">{scenes.length} Scenes</span>
+                    </div>
+                    <div className="space-y-2 max-h-36 overflow-y-auto pr-1">
+                      {scenes.map((sc, i) => (
+                        <div key={sc.id} className="flex items-center gap-2.5 bg-white p-2 rounded-lg border border-purple-100 shadow-2xs">
+                          <img
+                            src={resolveMediaUrl(sc.image_url)}
+                            alt={sc.filename}
+                            className="w-9 h-9 object-cover rounded-md border border-gray-200 shrink-0"
+                          />
+                          <span className="shrink-0 text-[11px] font-bold text-gray-700">
+                            Scene {i + 1}:
+                          </span>
+                          <input
+                            type="text"
+                            value={sc.subject || ''}
+                            onChange={(e) => updateScene(i, { subject: e.target.value })}
+                            placeholder="e.g. Sardar Vallabhbhai Patel Statue (Statue of Unity)..."
+                            className="flex-1 text-xs px-2.5 py-1 bg-gray-50 border border-gray-200 rounded-md focus:bg-white focus:ring-1 focus:ring-purple-500 focus:outline-none"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 <button
                   type="button"
