@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { 
-  Video, Folder, Upload, Play, Clock, MoreVertical, Plus, 
-  CheckCircle2, AlertCircle, ArrowUpRight, Sparkles, Layers, 
-  ChevronRight, Download, Share2, ShieldCheck, FileCheck, Eraser
+  Video, Folder, Play, Clock, Plus, 
+  CheckCircle2, Sparkles, Layers, 
+  ChevronRight, Share2, ShieldCheck, Image,
+  ArrowRight, Film, Wand2
 } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import axios from 'axios';
@@ -46,212 +47,266 @@ export default function Dashboard() {
     switch (status) {
       case 'Completed':
         return {
-          badge: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+          badge: 'bg-emerald-50 text-emerald-700 border-emerald-200/80',
           dot: 'bg-emerald-500',
           label: 'Ready to Post'
         };
       case 'Ready':
         return {
-          badge: 'bg-blue-50 text-blue-700 border-blue-200',
-          dot: 'bg-blue-500',
+          badge: 'bg-indigo-50 text-indigo-700 border-indigo-200/80',
+          dot: 'bg-indigo-500',
           label: 'Script Ready'
         };
       case 'Rendering':
         return {
-          badge: 'bg-amber-50 text-amber-700 border-amber-200 animate-pulse',
+          badge: 'bg-amber-50 text-amber-700 border-amber-200/80 animate-pulse',
           dot: 'bg-amber-500',
           label: 'Rendering...'
         };
       case 'Planning':
         return {
-          badge: 'bg-purple-50 text-purple-700 border-purple-200',
+          badge: 'bg-purple-50 text-purple-700 border-purple-200/80',
           dot: 'bg-purple-500',
           label: 'Planning'
         };
       case 'Failed':
         return {
-          badge: 'bg-rose-50 text-rose-700 border-rose-200',
+          badge: 'bg-rose-50 text-rose-700 border-rose-200/80',
           dot: 'bg-rose-500',
           label: 'Failed'
         };
       default:
         return {
-          badge: 'bg-gray-50 text-gray-700 border-gray-200',
-          dot: 'bg-gray-400',
+          badge: 'bg-slate-100 text-slate-700 border-slate-200',
+          dot: 'bg-slate-400',
           label: status
         };
     }
   };
 
   return (
-    <div className="p-8 max-w-7xl mx-auto space-y-10 animate-fadeIn text-[var(--color-text-primary)]">
-      {/* Hero Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 pb-2">
-        <div>
-          <div className="inline-flex items-center gap-2 px-3 py-1 bg-[var(--color-primary-blue)]/10 border border-[var(--color-primary-blue)]/20 rounded-full text-xs font-bold text-[var(--color-primary-blue)] uppercase tracking-wider mb-2">
-            <Sparkles className="w-3.5 h-3.5 text-[var(--color-primary-blue)]" />
-            Qoneqt AI Content Studio
+    <div className="p-6 md:p-10 max-w-7xl mx-auto space-y-10 animate-fadeIn text-slate-900 font-sans">
+      {/* Studio Hero Header */}
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 pb-2">
+        <div className="space-y-2">
+          <div className="inline-flex items-center gap-2 px-3 py-1 bg-white border border-slate-200/80 rounded-full text-xs font-semibold text-slate-700 shadow-2xs">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+            <span>Qoneqt AI Content Studio</span>
+            <span className="text-slate-300">•</span>
+            <span className="text-indigo-600 font-bold">Studio Hub</span>
           </div>
-          <h2 className="text-3xl sm:text-4xl font-extrabold text-[var(--color-text-primary)] tracking-tight">
-            Turn ideas into <span className="text-transparent bg-clip-text bg-gradient-to-r from-[var(--color-primary-blue)] via-[var(--color-primary-darkBlue)] to-[var(--color-primary-orange)]">viral videos.</span>
-          </h2>
-          <p className="text-[var(--color-text-secondary)] mt-1 text-sm sm:text-base">
-            Create, manage and publish high-converting video content with AI-assisted captions and hashtags.
+          <h1 className="text-3xl sm:text-4xl font-extrabold text-slate-900 tracking-tight leading-tight">
+            Produce studio-grade videos in minutes.
+          </h1>
+          <p className="text-slate-500 text-sm sm:text-base max-w-2xl font-normal leading-relaxed">
+            Transform scripts, photos, and concepts into publish-ready video stories with natural AI voice narration and synchronized captions.
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
-          <Link
-            to="/security"
-            className="inline-flex items-center justify-center gap-2 px-5 py-3.5 bg-white hover:bg-[var(--color-background)] text-[var(--color-text-primary)] font-bold rounded-2xl border border-[var(--color-border)] shadow-xs transition-all text-sm shrink-0"
+        {/* Action Controls */}
+        <div className="flex items-center gap-3 shrink-0">
+          <Link 
+            to="/assets" 
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-white hover:bg-slate-50 text-slate-700 hover:text-slate-900 font-semibold rounded-xl border border-slate-200/90 shadow-2xs transition-all text-sm"
           >
-            <ShieldCheck className="w-4 h-4 text-[var(--color-primary-blue)]" />
-            Security & Privacy
+            <Image className="w-4 h-4 text-orange-500" />
+            <span>Image-to-Video</span>
           </Link>
           <Link 
             to="/create" 
-            className="inline-flex items-center justify-center gap-2.5 px-6 py-3.5 bg-gradient-to-r from-[var(--color-primary-blue)] to-[var(--color-primary-darkBlue)] hover:opacity-95 text-white font-bold rounded-2xl shadow-lg shadow-[var(--color-primary-blue)]/25 transition-all transform hover:-translate-y-0.5 shrink-0"
+            className="inline-flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-xl shadow-xs transition-all text-sm"
           >
-            <Plus className="w-5 h-5" />
-            Create Video
+            <Plus className="w-4 h-4" />
+            <span>Create Video</span>
           </Link>
         </div>
       </div>
 
-      {/* Security & Integrity Quick Banner */}
-      <div className="p-5 bg-gradient-to-r from-[var(--color-primary-darkBlue)] via-[#2c4042] to-[#1f2e30] rounded-3xl text-white flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-lg shadow-[var(--color-primary-darkBlue)]/20">
-        <div className="flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-white/10 backdrop-blur-md flex items-center justify-center text-[var(--color-primary-orange)] shrink-0">
-            <ShieldCheck className="w-6 h-6" />
+      {/* Studio Creation Hub Cards (Aesthetic Quick Access) */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+        {/* Card 1: Image to Video */}
+        <Link 
+          to="/assets"
+          className="group p-6 bg-white rounded-2xl border border-slate-200/80 shadow-2xs hover:shadow-md hover:border-orange-300 transition-all duration-200 flex flex-col justify-between"
+        >
+          <div className="space-y-3">
+            <div className="w-10 h-10 rounded-xl bg-orange-50 text-orange-600 border border-orange-100 flex items-center justify-center group-hover:scale-105 transition-transform">
+              <Image className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-slate-900 group-hover:text-orange-600 transition-colors">
+                Image-to-Video Studio
+              </h3>
+              <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                Upload photos & landmarks (JPG, PNG, JFIF). AI auto-identifies subjects, generates custom narrations, and applies camera motion.
+              </p>
+            </div>
           </div>
-          <div>
-            <h4 className="font-extrabold text-sm sm:text-base text-white">Video Integrity & Metadata Sanitizer Tools</h4>
-            <p className="text-xs text-gray-200 mt-0.5">
-              Verify SHA-256 byte fingerprints and strip identifying container metadata before publishing.
-            </p>
+          <div className="pt-4 mt-2 border-t border-slate-100 flex items-center justify-between text-xs font-bold text-orange-600">
+            <span>Launch Image Studio</span>
+            <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
           </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <Link
-            to="/security"
-            className="px-4 py-2 bg-white text-[var(--color-text-primary)] hover:bg-[var(--color-background)] text-xs font-bold rounded-xl transition-all shadow-xs flex items-center gap-1.5"
-          >
-            <span>Launch Security Center</span>
-            <ChevronRight className="w-3.5 h-3.5" />
-          </Link>
-        </div>
+        </Link>
+
+        {/* Card 2: Multi-Scene Video Generator */}
+        <Link 
+          to="/create"
+          className="group p-6 bg-white rounded-2xl border border-slate-200/80 shadow-2xs hover:shadow-md hover:border-indigo-300 transition-all duration-200 flex flex-col justify-between"
+        >
+          <div className="space-y-3">
+            <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 border border-indigo-100 flex items-center justify-center group-hover:scale-105 transition-transform">
+              <Wand2 className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-slate-900 group-hover:text-indigo-600 transition-colors">
+                Prompt to Video Engine
+              </h3>
+              <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                Enter any topic or prompt. The AI scriptwriter crafts full scenes, timing, captions, and ready-to-post hashtags.
+              </p>
+            </div>
+          </div>
+          <div className="pt-4 mt-2 border-t border-slate-100 flex items-center justify-between text-xs font-bold text-indigo-600">
+            <span>Start Generator</span>
+            <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+          </div>
+        </Link>
+
+        {/* Card 3: Security & Metadata Sanitizer */}
+        <Link 
+          to="/security"
+          className="group p-6 bg-white rounded-2xl border border-slate-200/80 shadow-2xs hover:shadow-md hover:border-emerald-300 transition-all duration-200 flex flex-col justify-between"
+        >
+          <div className="space-y-3">
+            <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 border border-emerald-100 flex items-center justify-center group-hover:scale-105 transition-transform">
+              <ShieldCheck className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-slate-900 group-hover:text-emerald-600 transition-colors">
+                Media Sanitizer & Privacy
+              </h3>
+              <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                Inspect SHA-256 byte fingerprints, verify content integrity, and strip private camera metadata before publishing.
+              </p>
+            </div>
+          </div>
+          <div className="pt-4 mt-2 border-t border-slate-100 flex items-center justify-between text-xs font-bold text-emerald-600">
+            <span>Security Center</span>
+            <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+          </div>
+        </Link>
       </div>
 
-      
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+      {/* Unified Studio Metrics Cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
         {[
           { 
             title: 'Total Projects', 
             count: totalProjects, 
-            subtext: `${completedVideos} finished`,
+            subtext: `${completedVideos} completed videos`,
             icon: Folder, 
-            bg: 'bg-[var(--color-primary-blue)]/10', 
-            text: 'text-[var(--color-primary-blue)]',
-            gradient: 'from-[var(--color-primary-blue)] to-[var(--color-primary-darkBlue)]'
+            iconClass: 'text-slate-700 bg-slate-100'
           },
           { 
             title: 'Videos Created', 
             count: completedVideos, 
-            subtext: 'Ready to download & post',
+            subtext: 'Ready to post & download',
             icon: Video, 
-            bg: 'bg-[var(--color-status-success)]/10', 
-            text: 'text-[var(--color-status-success)]',
-            gradient: 'from-[var(--color-status-success)] to-teal-600'
+            iconClass: 'text-emerald-600 bg-emerald-50'
           },
           { 
             title: 'Active Workflows', 
             count: inProgressJobs, 
             subtext: 'Scripts & storyboard drafting',
             icon: Play, 
-            bg: 'bg-[var(--color-status-warning)]/15', 
-            text: 'text-[var(--color-status-warning)]',
-            gradient: 'from-[var(--color-status-warning)] to-[var(--color-primary-orange)]'
+            iconClass: 'text-amber-600 bg-amber-50'
           },
           { 
             title: 'Media Scenes & Assets', 
             count: totalAssets, 
-            subtext: 'Visuals, audio & voice clips',
+            subtext: 'Visuals, voice & audio clips',
             icon: Layers, 
-            bg: 'bg-[var(--color-primary-orange)]/15', 
-            text: 'text-[var(--color-primary-orange)]',
-            gradient: 'from-[var(--color-primary-orange)] to-amber-600'
+            iconClass: 'text-indigo-600 bg-indigo-50'
           },
         ].map((stat, i) => (
           <div 
             key={i} 
-            className="bg-white p-6 rounded-3xl border border-[var(--color-border)] shadow-xs hover:shadow-md transition-all relative overflow-hidden group">
-            <div className={`absolute top-0 right-0 w-28 h-28 bg-gradient-to-bl ${stat.gradient} opacity-5 -mr-8 -mt-8 rounded-full group-hover:scale-125 transition-transform duration-500`}></div>
-            
-            <div className="flex items-center justify-between mb-4">
-              <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${stat.bg}`}>
-                <stat.icon className={`w-6 h-6 ${stat.text}`} />
+            className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-2xs hover:shadow-xs transition-all relative overflow-hidden"
+          >
+            <div className="flex items-center justify-between mb-3">
+              <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${stat.iconClass}`}>
+                <stat.icon className="w-4 h-4" />
               </div>
-              <span className="text-[11px] font-semibold text-[var(--color-text-secondary)] uppercase tracking-wider">
-                Live Stat
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                Live
               </span>
             </div>
 
-            <h3 className="text-[var(--color-text-secondary)] text-xs font-bold uppercase tracking-wider mb-1">{stat.title}</h3>
-            <p className="text-3xl sm:text-4xl font-extrabold text-[var(--color-text-primary)] tracking-tight">
+            <h3 className="text-slate-500 text-xs font-semibold uppercase tracking-wider mb-1">{stat.title}</h3>
+            <p className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
               {loading ? (
-                <span className="inline-block w-8 h-8 bg-gray-200 rounded animate-pulse"></span>
+                <span className="inline-block w-8 h-7 bg-slate-100 rounded animate-pulse"></span>
               ) : (
                 stat.count
               )}
             </p>
-            <p className="text-xs text-[var(--color-text-secondary)] mt-1 font-medium">{stat.subtext}</p>
+            <p className="text-[11px] text-slate-400 mt-1 font-medium">{stat.subtext}</p>
           </div>
         ))}
       </div>
       
-      {/* Recent Projects Section */}
-      <div className="space-y-6">
+      {/* Recent Projects Gallery Section */}
+      <div className="space-y-5">
         <div className="flex items-center justify-between">
           <div>
-            <h3 className="text-2xl font-extrabold text-[var(--color-text-primary)] tracking-tight">Recent Projects</h3>
-            <p className="text-xs sm:text-sm text-[var(--color-text-secondary)]">Your latest video creations, status, and ready-to-post copy</p>
+            <h2 className="text-xl font-bold text-slate-900 tracking-tight">Recent Projects</h2>
+            <p className="text-xs text-slate-500 mt-0.5">Your latest video creations, status, and ready-to-post copy</p>
           </div>
           <Link 
             to="/projects" 
-            className="inline-flex items-center gap-1.5 text-sm font-bold text-[var(--color-primary-blue)] hover:opacity-80 bg-[var(--color-primary-blue)]/10 px-4 py-2 rounded-xl transition-all">
+            className="inline-flex items-center gap-1.5 text-xs font-bold text-indigo-600 hover:text-indigo-700 bg-indigo-50/70 hover:bg-indigo-100/70 px-3 py-1.5 rounded-lg transition-all"
+          >
             <span>View all ({totalProjects})</span>
-            <ChevronRight className="w-4 h-4" />
+            <ChevronRight className="w-3.5 h-3.5" />
           </Link>
         </div>
         
         {loading ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {[1, 2, 3].map((n) => (
-              <div key={n} className="bg-white rounded-3xl border border-[var(--color-border)] p-6 space-y-4 animate-pulse">
-                <div className="h-40 bg-gray-100 rounded-2xl"></div>
-                <div className="h-4 bg-gray-100 rounded w-3/4"></div>
-                <div className="h-3 bg-gray-100 rounded w-1/2"></div>
+              <div key={n} className="bg-white rounded-2xl border border-slate-200/80 p-5 space-y-4 animate-pulse">
+                <div className="h-36 bg-slate-100 rounded-xl"></div>
+                <div className="h-4 bg-slate-100 rounded w-3/4"></div>
+                <div className="h-3 bg-slate-100 rounded w-1/2"></div>
               </div>
             ))}
           </div>
         ) : projects.length === 0 ? (
-          <div className="bg-white rounded-3xl border border-dashed border-[var(--color-border)] p-12 text-center text-[var(--color-text-secondary)]">
-            <div className="w-16 h-16 rounded-2xl bg-[var(--color-primary-blue)]/10 text-[var(--color-primary-blue)] flex items-center justify-center mx-auto mb-4">
-              <Folder className="w-8 h-8" />
+          <div className="bg-white rounded-2xl border border-dashed border-slate-200 p-12 text-center text-slate-500">
+            <div className="w-14 h-14 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center mx-auto mb-3">
+              <Film className="w-7 h-7" />
             </div>
-            <h4 className="text-lg font-bold text-[var(--color-text-primary)] mb-2">No projects found</h4>
-            <p className="text-sm max-w-md mx-auto mb-6 text-[var(--color-text-secondary)]">
-              You haven't created any videos yet. Click below to start generating your first AI video!
+            <h4 className="text-base font-bold text-slate-900 mb-1">No projects created yet</h4>
+            <p className="text-xs text-slate-500 max-w-sm mx-auto mb-5 leading-relaxed">
+              Start by uploading your images in Image-to-Video or write a prompt to produce your first high-converting video.
             </p>
-            <Link 
-              to="/create" 
-              className="inline-flex items-center gap-2 px-6 py-3 bg-[var(--color-primary-blue)] hover:bg-[var(--color-primary-darkBlue)] text-white font-bold rounded-xl shadow-md transition-all">
-              <Plus className="w-5 h-5" /> Create Video
-            </Link>
+            <div className="flex items-center justify-center gap-3">
+              <Link 
+                to="/assets" 
+                className="inline-flex items-center gap-1.5 px-4 py-2 bg-white hover:bg-slate-50 text-slate-700 font-semibold text-xs rounded-xl border border-slate-200 shadow-2xs transition-all"
+              >
+                <Image className="w-3.5 h-3.5 text-orange-500" /> Image-to-Video
+              </Link>
+              <Link 
+                to="/create" 
+                className="inline-flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs rounded-xl shadow-xs transition-all"
+              >
+                <Plus className="w-3.5 h-3.5" /> Create Video
+              </Link>
+            </div>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
             {projects.slice(0, 6).map((project: any) => {
               const statusInfo = getStatusBadge(project.status);
               const hasVideo = Boolean(project.output_path);
@@ -260,9 +315,10 @@ export default function Dashboard() {
                 <div 
                   key={project.id} 
                   onClick={() => navigate(`/projects/${project.id}`)}
-                  className="bg-white rounded-3xl border border-[var(--color-border)] overflow-hidden shadow-2xs hover:shadow-xl hover:border-[var(--color-primary-blue)]/50 transition-all duration-300 group cursor-pointer flex flex-col">
+                  className="bg-white rounded-2xl border border-slate-200/80 overflow-hidden shadow-2xs hover:shadow-md hover:border-indigo-300 transition-all duration-200 group cursor-pointer flex flex-col"
+                >
                   {/* Card Thumbnail / Preview */}
-                  <div className="relative h-44 bg-gray-950 overflow-hidden flex items-center justify-center">
+                  <div className="relative h-40 bg-slate-950 overflow-hidden flex items-center justify-center">
                     {hasVideo ? (
                       <video 
                         src={getVideoUrl(project.output_path)} 
@@ -270,9 +326,9 @@ export default function Dashboard() {
                         className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 opacity-90"
                       />
                     ) : (
-                      <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-gray-900 to-gray-800 text-gray-500 group-hover:text-[var(--color-primary-blue)] transition-colors">
-                        <Video className="w-12 h-12 mb-1 group-hover:scale-110 transition-transform" />
-                        <span className="text-[11px] font-medium text-gray-400">
+                      <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-slate-900 to-slate-800 text-slate-500 group-hover:text-indigo-400 transition-colors">
+                        <Video className="w-10 h-10 mb-1 group-hover:scale-110 transition-transform text-slate-600 group-hover:text-indigo-400" />
+                        <span className="text-[10px] font-medium text-slate-400">
                           {project.aspect_ratio || '9:16'} • {project.duration || 60}s
                         </span>
                       </div>
@@ -281,60 +337,60 @@ export default function Dashboard() {
                     <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent pointer-events-none"></div>
 
                     {/* Status Badge */}
-                    <div className="absolute top-3 left-3">
-                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold border backdrop-blur-md bg-white/90 shadow-2xs ${statusInfo.badge}`}>
-                        <span className={`w-2 h-2 rounded-full ${statusInfo.dot}`}></span>
+                    <div className="absolute top-2.5 left-2.5">
+                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold border backdrop-blur-md bg-white/95 shadow-2xs ${statusInfo.badge}`}>
+                        <span className={`w-1.5 h-1.5 rounded-full ${statusInfo.dot}`}></span>
                         {statusInfo.label}
                       </span>
                     </div>
 
                     {/* Platform Tag */}
-                    <div className="absolute top-3 right-3">
-                      <span className="px-2.5 py-1 rounded-lg text-[10px] font-extrabold uppercase tracking-wider bg-black/60 text-white backdrop-blur-md">
+                    <div className="absolute top-2.5 right-2.5">
+                      <span className="px-2 py-0.5 rounded-md text-[9px] font-extrabold uppercase tracking-wider bg-black/60 text-white backdrop-blur-md">
                         {project.platform || 'Shorts'}
                       </span>
                     </div>
 
                     {/* Title overlay */}
-                    <div className="absolute bottom-3 left-3 right-3 pointer-events-none">
-                      <h4 className="font-extrabold text-white text-base truncate">
+                    <div className="absolute bottom-2.5 left-3 right-3 pointer-events-none">
+                      <h4 className="font-bold text-white text-sm truncate">
                         {project.topic || 'Untitled Project'}
                       </h4>
-                      <p className="text-gray-300 text-xs truncate">
+                      <p className="text-slate-300 text-[11px] truncate">
                         {project.strategy?.title || project.title || project.topic}
                       </p>
                     </div>
                   </div>
 
                   {/* Card Body */}
-                  <div className="p-5 flex-1 flex flex-col justify-between space-y-4">
+                  <div className="p-4 flex-1 flex flex-col justify-between space-y-3">
                     <div className="space-y-2">
-                      <div className="flex items-center justify-between text-xs text-[var(--color-text-secondary)]">
+                      <div className="flex items-center justify-between text-xs text-slate-500">
                         <span className="flex items-center gap-1">
-                          <Clock className="w-3.5 h-3.5 text-[var(--color-text-secondary)]" />
-                          {project.duration || 60} seconds
+                          <Clock className="w-3.5 h-3.5 text-slate-400" />
+                          {project.duration || 60}s duration
                         </span>
-                        <span className="font-medium text-[var(--color-text-secondary)]">
+                        <span className="font-medium text-slate-400">
                           {project.audience || 'General'}
                         </span>
                       </div>
 
                       {project.social_post && (
-                        <div className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-[var(--color-primary-blue)]/10 border border-[var(--color-primary-blue)]/20 rounded-lg text-xs font-semibold text-[var(--color-primary-blue)]">
-                          <Share2 className="w-3 h-3 text-[var(--color-primary-blue)]" />
-                          <span>Captions & Hashtags ready</span>
+                        <div className="inline-flex items-center gap-1.5 px-2 py-1 bg-indigo-50 border border-indigo-100/80 rounded-md text-[11px] font-semibold text-indigo-700">
+                          <Share2 className="w-3 h-3 text-indigo-600" />
+                          <span>Captions ready</span>
                         </div>
                       )}
                     </div>
 
                     {/* Bottom Action Footer */}
-                    <div className="pt-3 border-t border-[var(--color-border)] flex items-center justify-between">
-                      <span className="text-xs font-bold text-[var(--color-primary-blue)] group-hover:text-[var(--color-primary-darkBlue)] flex items-center gap-1">
+                    <div className="pt-2.5 border-t border-slate-100 flex items-center justify-between">
+                      <span className="text-xs font-bold text-indigo-600 group-hover:text-indigo-700 flex items-center gap-1">
                         Open Project <ChevronRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
                       </span>
 
                       {project.status === 'Completed' && (
-                        <span className="text-xs font-semibold text-[var(--color-status-success)] flex items-center gap-1">
+                        <span className="text-xs font-semibold text-emerald-600 flex items-center gap-1">
                           <CheckCircle2 className="w-3.5 h-3.5" /> Ready
                         </span>
                       )}

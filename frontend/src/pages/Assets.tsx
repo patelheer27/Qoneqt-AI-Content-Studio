@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { 
-  Upload, Trash2, ArrowUp, ArrowDown, Play, Download, Sparkles, 
-  RefreshCw, Film, Volume2, Type, CheckCircle2, 
+import {
+  Upload, Trash2, ArrowUp, ArrowDown, Play, Download, Sparkles,
+  RefreshCw, Film, Volume2, Type, CheckCircle2,
   AlertCircle, X, Compass, Move, ExternalLink, Plus, RotateCcw,
   Check, User
 } from 'lucide-react';
@@ -115,7 +115,7 @@ export default function Assets() {
   // Settings
   const [aspectRatio, setAspectRatio] = useState<'16:9' | '9:16' | '1:1'>('16:9');
   const [resolution, setResolution] = useState<'720p' | '1080p'>('1080p');
-  
+
   // Voice Narration state: Two options only (Female & Male) + Custom Audio upload
   const [voiceEnabled, setVoiceEnabled] = useState(true);
   const [selectedVoice, setSelectedVoice] = useState<'en-US-JennyNeural' | 'en-US-GuyNeural'>('en-US-JennyNeural');
@@ -595,11 +595,10 @@ export default function Assets() {
                 <button
                   key={ratio}
                   onClick={() => setAspectRatio(ratio)}
-                  className={`px-3 py-1 rounded-md text-xs font-bold transition-all cursor-pointer ${
-                    aspectRatio === ratio
+                  className={`px-3 py-1 rounded-md text-xs font-bold transition-all cursor-pointer ${aspectRatio === ratio
                       ? 'bg-white text-blue-700 shadow-sm'
                       : 'text-gray-500 hover:text-gray-900'
-                  }`}
+                    }`}
                 >
                   {ratio === '16:9' ? '16:9 Landscape' : ratio === '9:16' ? '9:16 Portrait' : '1:1 Square'}
                 </button>
@@ -614,11 +613,10 @@ export default function Assets() {
                 <button
                   key={res}
                   onClick={() => setResolution(res)}
-                  className={`px-3 py-1 rounded-md text-xs font-bold transition-all cursor-pointer ${
-                    resolution === res
+                  className={`px-3 py-1 rounded-md text-xs font-bold transition-all cursor-pointer ${resolution === res
                       ? 'bg-white text-blue-700 shadow-sm'
                       : 'text-gray-500 hover:text-gray-900'
-                  }`}
+                    }`}
                 >
                   {res}
                 </button>
@@ -648,7 +646,7 @@ export default function Assets() {
             <span className="text-xs font-black text-blue-700">{currentJob.progress}%</span>
           </div>
           <div className="w-full bg-blue-200 h-2.5 rounded-full overflow-hidden">
-            <div 
+            <div
               className="bg-gradient-to-r from-blue-600 to-orange-500 h-full rounded-full transition-all duration-300"
               style={{ width: `${Math.max(5, currentJob.progress)}%` }}
             />
@@ -668,10 +666,10 @@ export default function Assets() {
       {isJobCompleted && currentVideoUrl && (
         <div className="bg-gradient-to-br from-emerald-50 via-teal-50 to-blue-50 border-2 border-emerald-300 rounded-3xl p-6 shadow-xl flex flex-col md:flex-row items-center gap-6">
           <div className="w-full md:w-96 rounded-2xl overflow-hidden shadow-2xl border-2 border-emerald-200 bg-black aspect-video flex items-center justify-center relative">
-            <video 
+            <video
               key={currentVideoUrl}
-              src={currentVideoUrl} 
-              controls 
+              src={currentVideoUrl}
+              controls
               playsInline
               autoPlay
               className="w-full h-full object-contain"
@@ -879,11 +877,10 @@ export default function Assets() {
                 {scenes.map((scene, idx) => (
                   <div
                     key={scene.id}
-                    className={`bg-white rounded-2xl border transition-all p-5 shadow-sm ${
-                      activeSceneIndex === idx
+                    className={`bg-white rounded-2xl border transition-all p-5 shadow-sm ${activeSceneIndex === idx
                         ? 'border-blue-500 ring-2 ring-blue-100'
                         : 'border-gray-100 hover:border-gray-200'
-                    }`}
+                      }`}
                     onClick={() => setActiveSceneIndex(idx)}
                   >
                     <div className="flex flex-col md:flex-row gap-5">
@@ -1029,18 +1026,16 @@ export default function Assets() {
                                 <button
                                   type="button"
                                   onClick={() => updateScene(idx, { motion_type: 'camera' })}
-                                  className={`px-2 py-0.5 rounded-md transition-all cursor-pointer ${
-                                    scene.motion_type === 'camera' ? 'bg-white text-blue-700 shadow-xs' : 'text-gray-600'
-                                  }`}
+                                  className={`px-2 py-0.5 rounded-md transition-all cursor-pointer ${scene.motion_type === 'camera' ? 'bg-white text-blue-700 shadow-xs' : 'text-gray-600'
+                                    }`}
                                 >
                                   Camera
                                 </button>
                                 <button
                                   type="button"
                                   onClick={() => updateScene(idx, { motion_type: 'ai' })}
-                                  className={`px-2 py-0.5 rounded-md transition-all cursor-pointer ${
-                                    scene.motion_type === 'ai' ? 'bg-white text-orange-600 shadow-xs' : 'text-gray-600'
-                                  }`}
+                                  className={`px-2 py-0.5 rounded-md transition-all cursor-pointer ${scene.motion_type === 'ai' ? 'bg-white text-orange-600 shadow-xs' : 'text-gray-600'
+                                    }`}
                                 >
                                   AI Motion
                                 </button>
@@ -1080,11 +1075,10 @@ export default function Assets() {
                                         key={lvl}
                                         type="button"
                                         onClick={() => updateScene(idx, { ai_intensity: lvl })}
-                                        className={`px-2 py-0.5 rounded uppercase text-[9px] cursor-pointer ${
-                                          scene.ai_intensity === lvl
+                                        className={`px-2 py-0.5 rounded uppercase text-[9px] cursor-pointer ${scene.ai_intensity === lvl
                                             ? 'bg-orange-500 text-white font-extrabold'
                                             : 'bg-gray-200 text-gray-600'
-                                        }`}
+                                          }`}
                                       >
                                         {lvl}
                                       </button>
@@ -1180,11 +1174,10 @@ export default function Assets() {
                     <button
                       type="button"
                       onClick={() => setSelectedVoice('en-US-JennyNeural')}
-                      className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col gap-1 ${
-                        selectedVoice === 'en-US-JennyNeural'
+                      className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col gap-1 ${selectedVoice === 'en-US-JennyNeural'
                           ? 'border-pink-500 bg-pink-50/60 ring-2 ring-pink-100 shadow-xs'
                           : 'border-gray-200 bg-gray-50/70 hover:bg-gray-100'
-                      }`}
+                        }`}
                     >
                       <div className="flex items-center justify-between">
                         <span className="text-xs font-black text-gray-900 flex items-center gap-1.5">
@@ -1201,11 +1194,10 @@ export default function Assets() {
                     <button
                       type="button"
                       onClick={() => setSelectedVoice('en-US-GuyNeural')}
-                      className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col gap-1 ${
-                        selectedVoice === 'en-US-GuyNeural'
+                      className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col gap-1 ${selectedVoice === 'en-US-GuyNeural'
                           ? 'border-blue-500 bg-blue-50/60 ring-2 ring-blue-100 shadow-xs'
                           : 'border-gray-200 bg-gray-50/70 hover:bg-gray-100'
-                      }`}
+                        }`}
                     >
                       <div className="flex items-center justify-between">
                         <span className="text-xs font-black text-gray-900 flex items-center gap-1.5">
@@ -1333,11 +1325,10 @@ export default function Assets() {
                         key={p.color}
                         type="button"
                         onClick={() => setSubtitleColor(p.color)}
-                        className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold border transition-all cursor-pointer ${
-                          subtitleColor.toUpperCase() === p.color.toUpperCase()
+                        className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold border transition-all cursor-pointer ${subtitleColor.toUpperCase() === p.color.toUpperCase()
                             ? 'border-purple-600 bg-purple-50 text-purple-700 ring-1 ring-purple-400'
                             : 'border-gray-200 bg-gray-50 text-gray-700 hover:bg-gray-100'
-                        }`}
+                          }`}
                       >
                         <span className="w-2.5 h-2.5 rounded-full border border-black/20" style={{ backgroundColor: p.color }}></span>
                         {p.label}
@@ -1362,11 +1353,10 @@ export default function Assets() {
                           key={pos}
                           type="button"
                           onClick={() => setSubtitlePosition(pos)}
-                          className={`py-1.5 text-xs font-bold rounded-md transition-all cursor-pointer capitalize text-center ${
-                            subtitlePosition === pos
+                          className={`py-1.5 text-xs font-bold rounded-md transition-all cursor-pointer capitalize text-center ${subtitlePosition === pos
                               ? 'bg-purple-600 text-white shadow-xs'
                               : 'text-gray-600 hover:text-gray-900 hover:bg-gray-200/60'
-                          }`}
+                            }`}
                         >
                           {pos === 'top' ? 'Top' : pos === 'center' ? 'Center' : 'Bottom'}
                         </button>
@@ -1401,7 +1391,7 @@ export default function Assets() {
                   </div>
 
                   {/* Mock Video Canvas Frame */}
-                  <div 
+                  <div
                     className="relative w-full h-44 rounded-xl border border-neutral-800 bg-neutral-950 overflow-hidden flex flex-col justify-between p-3 select-none shadow-inner transition-all duration-300"
                     style={{
                       backgroundImage: 'radial-gradient(ellipse at 50% 50%, rgba(30, 41, 59, 0.5) 0%, rgba(10, 10, 15, 0.98) 100%)',
@@ -1425,13 +1415,12 @@ export default function Assets() {
 
                     {/* Subtitle Positioning Container: accurately placed at Top, Center, or Bottom */}
                     <div
-                      className={`w-full flex justify-center transition-all duration-300 ease-out z-10 ${
-                        subtitlePosition === 'top'
+                      className={`w-full flex justify-center transition-all duration-300 ease-out z-10 ${subtitlePosition === 'top'
                           ? 'mt-1 mb-auto'
                           : subtitlePosition === 'center'
-                          ? 'my-auto'
-                          : 'mt-auto mb-1'
-                      }`}
+                            ? 'my-auto'
+                            : 'mt-auto mb-1'
+                        }`}
                     >
                       <span
                         style={{
@@ -1444,13 +1433,12 @@ export default function Assets() {
                             ? '0px 2px 4px rgba(0,0,0,0.95), 0px 0px 8px rgba(0,0,0,0.85)'
                             : '0px 1px 2px rgba(0,0,0,0.6)',
                         }}
-                        className={`inline-block px-3.5 py-1.5 rounded-lg text-center max-w-[92%] transition-all duration-200 ${
-                          subtitleBg === 'translucent'
+                        className={`inline-block px-3.5 py-1.5 rounded-lg text-center max-w-[92%] transition-all duration-200 ${subtitleBg === 'translucent'
                             ? 'bg-black/70 backdrop-blur-md border border-white/20 shadow-lg'
                             : subtitleBg === 'solid'
-                            ? 'bg-neutral-950 border border-white/30 shadow-xl'
-                            : ''
-                        }`}
+                              ? 'bg-neutral-950 border border-white/30 shadow-xl'
+                              : ''
+                          }`}
                       >
                         Sample Synchronized Subtitle Preview
                       </span>
@@ -1496,16 +1484,14 @@ export default function Assets() {
                           window.scrollTo({ top: 0, behavior: 'smooth' });
                         }
                       }}
-                      className={`p-3 rounded-xl border transition-all cursor-pointer flex items-center justify-between ${
-                        isSelected 
-                          ? 'border-emerald-500 bg-emerald-50/60 shadow-xs' 
+                      className={`p-3 rounded-xl border transition-all cursor-pointer flex items-center justify-between ${isSelected
+                          ? 'border-emerald-500 bg-emerald-50/60 shadow-xs'
                           : 'border-gray-100 hover:bg-gray-50'
-                      }`}
+                        }`}
                     >
                       <div className="overflow-hidden pr-2 flex items-center gap-2.5">
-                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
-                          isSelected ? 'bg-emerald-600 text-white' : 'bg-emerald-50 text-emerald-700'
-                        }`}>
+                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${isSelected ? 'bg-emerald-600 text-white' : 'bg-emerald-50 text-emerald-700'
+                          }`}>
                           <Play className={`w-3.5 h-3.5 ${isSelected ? 'fill-white' : 'fill-emerald-700'}`} />
                         </div>
                         <div>
@@ -1564,11 +1550,10 @@ export default function Assets() {
               <button
                 type="button"
                 onClick={() => setScriptModalTab('ai')}
-                className={`flex-1 py-2 text-xs font-bold rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-                  scriptModalTab === 'ai'
+                className={`flex-1 py-2 text-xs font-bold rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer ${scriptModalTab === 'ai'
                     ? 'bg-white text-purple-700 shadow-xs'
                     : 'text-gray-600 hover:text-gray-900'
-                }`}
+                  }`}
               >
                 <Sparkles className="w-3.5 h-3.5 text-purple-600" />
                 ✨ AI Script Generator
@@ -1576,11 +1561,10 @@ export default function Assets() {
               <button
                 type="button"
                 onClick={() => setScriptModalTab('custom')}
-                className={`flex-1 py-2 text-xs font-bold rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-                  scriptModalTab === 'custom'
+                className={`flex-1 py-2 text-xs font-bold rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer ${scriptModalTab === 'custom'
                     ? 'bg-white text-blue-700 shadow-xs'
                     : 'text-gray-600 hover:text-gray-900'
-                }`}
+                  }`}
               >
                 <Type className="w-3.5 h-3.5 text-blue-600" />
                 📝 Provide Custom Script
@@ -1801,8 +1785,8 @@ export default function Assets() {
               <div>
                 <h3 className="text-base font-black text-gray-900">Scene Motion Preview</h3>
                 <p className="text-xs text-gray-500">
-                  {previewingScene.motion_type === 'camera' 
-                    ? `Camera Motion: ${previewingScene.camera_motion}` 
+                  {previewingScene.motion_type === 'camera'
+                    ? `Camera Motion: ${previewingScene.camera_motion}`
                     : `AI Motion: ${previewingScene.ai_motion} (${previewingScene.ai_intensity})`}
                 </p>
               </div>
@@ -1843,13 +1827,12 @@ export default function Assets() {
               {/* Subtitle Overlay in Scene Preview */}
               {subtitleEnabled && previewingScene.text && !isPreviewLoading && (
                 <div
-                  className={`absolute inset-x-0 px-4 pointer-events-none flex justify-center z-10 transition-all ${
-                    subtitlePosition === 'top'
+                  className={`absolute inset-x-0 px-4 pointer-events-none flex justify-center z-10 transition-all ${subtitlePosition === 'top'
                       ? 'top-4'
                       : subtitlePosition === 'center'
-                      ? 'top-1/2 -translate-y-1/2'
-                      : 'bottom-4'
-                  }`}
+                        ? 'top-1/2 -translate-y-1/2'
+                        : 'bottom-4'
+                    }`}
                 >
                   <span
                     style={{
@@ -1862,13 +1845,12 @@ export default function Assets() {
                         ? '0px 2px 4px rgba(0,0,0,0.95), 0px 0px 8px rgba(0,0,0,0.85)'
                         : '0px 1px 2px rgba(0,0,0,0.6)',
                     }}
-                    className={`inline-block px-3 py-1.5 rounded-lg text-center max-w-[90%] shadow-lg ${
-                      subtitleBg === 'translucent'
+                    className={`inline-block px-3 py-1.5 rounded-lg text-center max-w-[90%] shadow-lg ${subtitleBg === 'translucent'
                         ? 'bg-black/70 backdrop-blur-md border border-white/20'
                         : subtitleBg === 'solid'
-                        ? 'bg-neutral-950 border border-white/30'
-                        : ''
-                    }`}
+                          ? 'bg-neutral-950 border border-white/30'
+                          : ''
+                      }`}
                   >
                     {previewingScene.text}
                   </span>
